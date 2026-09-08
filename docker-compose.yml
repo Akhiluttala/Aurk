@@ -1,0 +1,30 @@
+services:
+  web:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DOCKER_DATABASE_URL:?Set DOCKER_DATABASE_URL in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./instance/uploads:/app/instance/uploads
+    ports:
+      - "8000:8000"
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ar_drips
+      MYSQL_USER: ar_drips_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mysql_data:
