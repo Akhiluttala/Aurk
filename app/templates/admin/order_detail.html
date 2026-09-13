@@ -1,5 +1,5 @@
 {% extends 'admin/base.html' %}
-{% block title %}Review {{ order.order_number }} — AR Drips{% endblock %}
+{% block title %}Review {{ order.order_number }} — AURK{% endblock %}
 {% block content %}<section class="container commerce-page"><a class="subtle-link" href="{{ url_for('admin.orders') }}">&larr; Customer orders</a><div class="commerce-heading"><p class="eyebrow">ORDER REVIEW</p><h1>{{ order.order_number }}</h1></div>{% set owner_view = true %}{% include 'account/_order_content.html' %}
 <div class="commerce-actions">{% if order.status == 'Pending' %}<form method="post" action="{{ url_for('admin.confirm_order', order_number=order.order_number) }}" data-submit-once><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button" type="submit">Confirm order</button></form><p class="muted">The customer will see “Order confirmed — you will receive a call shortly.”</p>{% else %}<p>Current status: {{ order.status }}. No further confirmation is needed.</p>{% endif %}</div>
 <div class="commerce-card order-fulfilment"><h2>Fulfilment</h2>

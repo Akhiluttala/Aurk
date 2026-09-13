@@ -3,6 +3,14 @@ from app.models import Category, Product
 
 main_bp = Blueprint("main", __name__)
 
+@main_bp.app_context_processor
+def brand_artwork():
+    from pathlib import Path
+    images = Path(current_app.static_folder) / "images" / "brand"
+    return {"aurk_logo_available": (images / "logo.jpeg").is_file(),
+            "aurk_hero_available": (images / "hero.png").is_file(),
+            "aurk_mobile_hero_available": (images / "hero-mobile.jpg").is_file()}
+
 @main_bp.get("/")
 def home():
     featured = Product.query.filter_by(is_active=True, is_featured=True).limit(8).all()

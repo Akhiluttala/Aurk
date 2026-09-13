@@ -128,7 +128,7 @@ def forgot_password():
             try:
                 send_email(
                     user.email,
-                    "Reset your AR Drips password",
+                    "Reset your AURK password",
                     f"<p>Use this link to reset your password:</p><p><a href=\"{reset_url}\">Reset password</a></p>",
                 )
             except Exception:

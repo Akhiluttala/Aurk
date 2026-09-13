@@ -5,7 +5,7 @@ LABELS = {"Pending": "Awaiting confirmation", "Confirmed": "Order confirmed", "S
 MESSAGES = {"Pending": "We have received your order. Our team will review it shortly.",
     "Confirmed": "Order confirmed \u2014 you will receive a call shortly.",
     "Shipped": "Your order is on its way. Please keep your phone available for delivery.",
-    "Delivered": "Your order has been delivered. Thank you for shopping with AR Drips.",
+    "Delivered": "Your order has been delivered. Thank you for shopping with AURK.",
     "Cancelled": "This order has been cancelled. No delivery payment is due."}
 TRANSITIONS = {"Pending": {"Confirmed", "Cancelled"}, "Confirmed": {"Shipped", "Cancelled"}, "Shipped": {"Delivered"}}
 
