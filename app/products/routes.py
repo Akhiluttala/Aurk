@@ -80,7 +80,7 @@ def shop():
     pagination = db.paginate(
         stmt,
         page=page,
-        per_page=24,
+        per_page=48,
         error_out=False,
     )
 
