@@ -1,6 +1,23 @@
 from datetime import datetime, timezone
 from app.extensions import db
 from app.models.types import BigIntPrimaryKey
+
+
+class ProductInterest(db.Model):
+    __tablename__ = "product_interests"
+    id = db.Column(BigIntPrimaryKey, primary_key=True)
+    product_id = db.Column(BigIntPrimaryKey, db.ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    customer_id = db.Column(BigIntPrimaryKey, db.ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    identity_key = db.Column(db.String(80), nullable=False)
+    customer_name = db.Column(db.String(200))
+    customer_email = db.Column(db.String(254), index=True)
+    customer_phone = db.Column(db.String(30))
+    product_status = db.Column(db.String(20), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    notified_at = db.Column(db.DateTime(timezone=True))
+    product = db.relationship("Product", back_populates="interests")
+    __table_args__ = (db.UniqueConstraint("product_id", "identity_key", name="uq_product_interest_identity"),)
+
 class Wishlist(db.Model):
     __tablename__ = "wishlists"
     id = db.Column(BigIntPrimaryKey, primary_key=True)

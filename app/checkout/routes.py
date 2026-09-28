@@ -15,6 +15,7 @@ from app.models import (
     Order,
     OrderItem,
     Payment,
+    Product,
 )
 from app.security.validators import safe_text
 from app.services.order_notifications import queue_order_alerts, dispatch_order_alerts
@@ -87,12 +88,18 @@ def checkout():
 
             # Lock every inventory row before checking and decrementing it.
             # This prevents two simultaneous checkouts from overselling stock.
+            # Serialize availability changes with checkout using current product reads.
+            product_ids = sorted({item.variant.product_id for item in items if item.variant})
+            locked_products = {p.id: p for p in db.session.scalars(db.select(Product)
+                .where(Product.id.in_(product_ids)).order_by(Product.id).with_for_update()
+                .execution_options(populate_existing=True))}
             locked_inventory = {}
             for item in items:
                 variant = item.variant
                 if item.quantity < 1:
                     raise ValueError("An item has an invalid quantity. Please update your cart.")
-                if not variant or not variant.is_active or not variant.product.is_active:
+                if (not variant or not variant.is_active or variant.product_id not in locked_products
+                        or not locked_products[variant.product_id].is_purchasable):
                     raise ValueError("One of the selected items is no longer available.")
                 inventory = db.session.execute(
                     db.select(Inventory)

@@ -143,6 +143,13 @@ if (menuToggle && siteHeader) {
     siteHeader.dataset.menuOpen = 'false';
     menuToggle.setAttribute('aria-expanded', 'false');
   }
+  window.matchMedia('(max-width: 1024px)').addEventListener('change', closeMenu);
+  document.addEventListener('click', event => {
+    if (!siteHeader.contains(event.target)) closeMenu();
+  });
+  siteHeader.querySelectorAll('nav a').forEach(link => {
+    link.addEventListener('click', closeMenu);
+  });
   menuToggle.addEventListener('click', () => {
     const open = siteHeader.dataset.menuOpen !== 'true';
     siteHeader.dataset.menuOpen = String(open);
@@ -172,4 +179,32 @@ document.querySelectorAll('[data-quick-add]').forEach(form => {
   select.addEventListener('change', update);
   window.addEventListener('pageshow', update);
   update();
+});
+
+
+// Reuse form CSRF tokens; regular form submission also works without JavaScript.
+document.querySelectorAll('[data-interest-form]').forEach((form) => {
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = form.querySelector('button');
+    if (button.disabled) return;
+    button.disabled = true;
+    const message = form.querySelector('[role="status"]');
+    message.textContent = 'Registering your interest...';
+    try {
+      const response = await fetch(form.action, {method: 'POST', body: new FormData(form), headers: {'Accept': 'application/json'}});
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || 'Something went wrong. Please try again.');
+      document.querySelectorAll('[data-interest-form]').forEach((other) => {
+        if (other.action === form.action) {
+          other.querySelector('button').disabled = true;
+          other.querySelector('button').textContent = 'Interest Registered \u2713';
+          other.querySelector('[role="status"]').textContent = result.message;
+        }
+      });
+    } catch (error) {
+      button.disabled = false;
+      message.textContent = error instanceof SyntaxError ? 'Something went wrong. Please reload and try again.' : error.message;
+    }
+  });
 });

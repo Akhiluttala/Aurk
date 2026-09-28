@@ -49,6 +49,14 @@
             >
         </label>
 
+        <label>Product status
+            <select name="product_status" required>
+            {% for value, label in [('available','Available'),('coming_soon','Coming Soon'),('out_of_stock','Out of Stock')] %}
+                <option value="{{ value }}" {% if request.form.get('product_status', product.product_status if product else 'available') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+            </select>
+        </label>
+        <p class="form-help">Availability controls purchasing independently of visibility and size/colour stock.</p>
         <fieldset>
             <legend>Storefront visibility</legend>
             <label><input type="checkbox" name="is_active" value="1" {% if not product or product.is_active %}checked{% endif %}> Visible in shop</label>

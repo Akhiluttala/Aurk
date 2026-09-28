@@ -8,6 +8,10 @@ def apply_security_headers(response):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if request.endpoint in {"auth.forgot_password", "auth.reset_password"}:
+        response.headers["Cache-Control"] = "no-store, private"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "

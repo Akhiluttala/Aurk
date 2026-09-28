@@ -96,6 +96,18 @@ The tests cover checkout, guest carts, stock, order lifecycle, admin sessions/pe
 
 Docker/Gunicorn/Nginx configuration is supplied as a starting point, not a verified hosting deployment. Docker requires explicit `DOCKER_DATABASE_URL`, `MYSQL_PASSWORD` and `MYSQL_ROOT_PASSWORD`; there are no usable default passwords. Database and uploads use persistent storage. `.dockerignore` prevents local secrets and environment files from being copied into the image. Hosting is outside the current project work.
 
+For local Docker use, install and start Docker Desktop. Set the three Docker variables in `.env`; the database URL must use `db:3306` as its host and port, with the same password as `MYSQL_PASSWORD` (URL-encoded in the URL). Then run:
+
+```powershell
+docker compose config --quiet
+docker compose up --build -d
+docker compose logs --tail=100 web
+```
+
+Open http://localhost:8000. Compose sets Gunicorn to listen on all container interfaces, uses the mounted uploads directory, and runs the included database migrations before starting the web server. The Docker database is separate from your existing local MySQL database and initially contains no store records. For local HTTP keep `FLASK_CONFIG=development`. Before public hosting, configure production settings, HTTPS and shared rate-limit storage.
+
+MySQL initialization passwords apply only to a new database volume; changing `.env` does not change passwords in an existing database. Keep `PUBLIC_BASE_URL` empty until you have a real public HTTPS address. Local shopping works without it, but owner notification links and their delivery remain unavailable until configured.
+
 ## Current limitations
 
 - Coupon configuration and review moderation exist in admin; customer coupon redemption/review submission are not wired into the storefront.
@@ -104,3 +116,25 @@ Docker/Gunicorn/Nginx configuration is supplied as a starting point, not a verif
 - Use production settings, HTTPS and a shared rate-limiter store before any real deployment; consider administrator MFA.
 
 See [Admin workspace](ADMIN_WORKSPACE.md), [Store operations](STORE_OPERATIONS.md), [Local status](LOCAL_STATUS.md) and [Repository review](REPOSITORY_REVIEW.md).
+
+
+### Email password recovery
+
+On `/admin/login`, choose **Forgot your password?**, enter the administrator's
+account email, and open **Reset password** in the email. Enter and confirm a new
+password (12-1024 characters), then sign in again. No terminal commands are needed.
+The email link expires after 30 minutes and becomes invalid after the password
+changes. Existing admin sessions are revoked. Customers use the same recovery
+flow from `/auth/forgot-password`.
+
+Configure `PUBLIC_BASE_URL=https://your-store-domain.com` together with the existing
+`MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`,
+`MAIL_USE_TLS`, and `MAIL_USE_SSL` settings in `.env`, then restart the application.
+For local development, `http://127.0.0.1:5000` is an example base URL; use the port
+your server actually uses. A local URL only opens on the computer running the app.
+Production reset emails require a configured HTTPS public URL. No database
+migration or new dependency is required for this recovery flow.
+
+The confirmation intentionally does not reveal whether an email has an account.
+If no message arrives, check spam, SMTP settings and application logs for
+`Password reset email could not be sent`. Do not share reset links or passwords.

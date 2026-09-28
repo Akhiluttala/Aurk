@@ -48,6 +48,18 @@ class Category(db.Model):
 
 class Product(db.Model):
     __tablename__ = "products"
+    STATUSES = {"available": "Available", "coming_soon": "Coming Soon", "out_of_stock": "Out of Stock"}
+    product_status = db.Column(db.String(20), nullable=False, default="available", server_default="available")
+    __table_args__ = (db.CheckConstraint("product_status IN ('available', 'coming_soon', 'out_of_stock')", name="ck_product_status"),)
+    interests = db.relationship("ProductInterest", back_populates="product", cascade="all, delete-orphan")
+
+    @property
+    def is_purchasable(self):
+        return self.is_active and not self.is_archived and self.product_status == "available"
+
+    @property
+    def status_label(self):
+        return self.STATUSES[self.product_status]
 
     id = db.Column(
         BigIntPrimaryKey,

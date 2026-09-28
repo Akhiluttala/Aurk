@@ -24,6 +24,7 @@ from .commerce import (
 )
 
 from .engagement import (
+    ProductInterest,
     Wishlist,
     WishlistItem,
     Review,

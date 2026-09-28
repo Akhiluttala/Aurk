@@ -46,6 +46,7 @@ class BaseConfig:
 
     PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "")
     ORDER_ALERT_EMAIL = os.environ.get("ORDER_ALERT_EMAIL", "")
+    INTEREST_NOTIFICATION_EMAIL = os.environ.get("INTEREST_NOTIFICATION_EMAIL", "")
     ORDER_ALERT_WHATSAPP = os.environ.get("ORDER_ALERT_WHATSAPP", "")
     MAIL_SERVER = os.environ.get("MAIL_SERVER", "")
     MAIL_PORT = int(os.environ.get("MAIL_PORT", "587"))

@@ -663,7 +663,7 @@ def test_password_reset_link_cannot_be_reused(seeded, monkeypatch):
     token = re.search(r"/auth/reset-password/([^\"]+)", sender.call_args.args[2]).group(1)
     path = "/auth/reset-password/" + token
     assert seeded.get(path).status_code == 200
-    response = seeded.post(path, data={"password":"ReplacementPassword123!"})
+    response = seeded.post(path, data={"password":"ReplacementPassword123!", "confirm_password":"ReplacementPassword123!"})
     assert response.status_code == 302
     assert seeded.get(path).status_code == 302
     response = seeded.post("/auth/login", data={"email":"buyer@example.com", "password":"ReplacementPassword123!"})

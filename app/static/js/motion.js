@@ -15,14 +15,14 @@
   });
   const targets = document.querySelectorAll('.storefront-hero-copy, .storefront-hero-feature, .storefront-section-heading, .home-collections > a, .home-product-card, .home-cod-story, .shop-header, .product-card, .commerce-heading');
   const observer = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
+    entries.forEach((entry, index) => {
       if (!entry.isIntersecting) return;
       observer.unobserve(entry.target);
       if (preference.matches) return;
       const animation = entry.target.animate([
-        {opacity:0, transform:'translateY(20px)'},
+        {opacity:0, transform:'translateY(12px)'},
         {opacity:1, transform:'translateY(0)'}
-      ], {duration:650, easing:'cubic-bezier(.2,.7,.2,1)', fill:'none'});
+      ], {duration:480, delay:Math.min(index, 3) * 45, easing:'cubic-bezier(.2,.7,.2,1)', fill:'none'});
       animations.add(animation);
       animation.onfinish = () => animations.delete(animation);
     });

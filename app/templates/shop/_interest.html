@@ -1,0 +1,5 @@
+<form class="product-interest" method="post" action="{{ url_for('products.register_interest', product_id=product.id) }}" data-interest-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="button interest-button" type="submit" {% if product.id in registered_interest_ids %}disabled{% endif %}>{{ "Interest Registered \u2713" if product.id in registered_interest_ids else "I'm Interested" }}</button>
+  <p class="interest-message" role="status" aria-live="polite"></p>
+</form>

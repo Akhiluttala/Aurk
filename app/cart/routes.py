@@ -59,7 +59,7 @@ def view():
         )
 
         item.available_stock = min(get_available_stock(item.variant), 99)
-        item.unavailable = not item.variant.is_active or not item.variant.product.is_active or item.available_stock == 0
+        item.unavailable = not item.variant.is_active or not item.variant.product.is_purchasable or item.available_stock == 0
         if item.unavailable or item.quantity > item.available_stock:
             checkout_ready = False
         item.unit_price = price
@@ -119,7 +119,7 @@ def add():
         .first()
     )
 
-    if not variant:
+    if not variant or not variant.product.is_purchasable:
         flash(
             "That size and color combination is unavailable.",
             "error"
@@ -244,7 +244,7 @@ def update():
         if key not in bag:
             return "Cart item not found", 404
         variant = db.session.get(ProductVariant, item_id)
-        if not variant or not variant.is_active or not variant.product.is_active:
+        if not variant or not variant.is_active or not variant.product.is_purchasable:
             flash("This item is no longer available. Please remove it from your bag.", "error")
         elif quantity < 1 or quantity > min(get_available_stock(variant), 99):
             flash("Choose a quantity between 1 and the available stock (up to 99).", "error")
@@ -289,7 +289,7 @@ def update():
             url_for("cart.view")
         )
 
-    if not item.variant.is_active or not item.variant.product.is_active:
+    if not item.variant.is_active or not item.variant.product.is_purchasable:
         flash("This item is no longer available. Please remove it from your cart.", "error")
         return redirect(url_for("cart.view"))
 

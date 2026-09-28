@@ -237,6 +237,7 @@ def create_product():
 
             # Create product first so we have product.id.
             product = Product(
+                product_status=_product_status(),
                 name=name,
                 slug=slug,
                 description=description,
@@ -393,6 +394,7 @@ def edit_product(product_id):
                 )
 
             # Update product information.
+            product.product_status = _product_status(product.product_status)
             product.name = name
             product.slug = slug
             product.description = description
@@ -881,3 +883,26 @@ register_management(admin_bp)
 def invalid_admin_input(error):
     db.session.rollback()
     return render_template("admin/error.html", code=400, message="Check your input and try again."), 400
+
+
+def _product_status(default="available"):
+    value = request.form.get("product_status", default)
+    if value not in Product.STATUSES:
+        raise ValueError("Choose a valid product status.")
+    return value
+
+
+@admin_bp.get("/interests")
+@permission_required("customers.manage")
+def interests():
+    from app.models import ProductInterest
+    from sqlalchemy import func
+    query = db.select(ProductInterest).order_by(ProductInterest.created_at.desc(), ProductInterest.id.desc())
+    product_id = request.args.get("product_id", type=int)
+    if product_id:
+        query = query.where(ProductInterest.product_id == product_id)
+    pagination = db.paginate(query, page=max(1, request.args.get("page", 1, type=int)), per_page=30, error_out=False)
+    counts = db.session.execute(db.select(Product.id, Product.name, func.count(ProductInterest.id))
+        .join(ProductInterest).group_by(Product.id, Product.name).order_by(Product.name)).all()
+    return render_template("admin/interests.html", pagination=pagination, counts=counts,
+        total=sum(row[2] for row in counts), product_id=product_id)

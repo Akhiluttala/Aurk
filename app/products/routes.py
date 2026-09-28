@@ -12,7 +12,7 @@ from sqlalchemy import func, or_, select
 
 from sqlalchemy.orm import selectinload
 from app.services.catalog import price_bounds, prepare_storefront_products, storefront_price_expression
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import Category, Product, ProductImage, ProductVariant
 
 
@@ -175,3 +175,76 @@ def product_image(image_id):
 @products_bp.get("/search")
 def search():
     return shop()
+
+
+@products_bp.app_context_processor
+def interest_context():
+    import secrets
+    from flask import session
+    from flask_login import current_user
+    from app.models import ProductInterest
+    if request.endpoint not in {"products.shop", "products.search", "products.detail", "main.home"}:
+        return {}
+    if not current_user.is_authenticated:
+        session.setdefault("interest_guest", secrets.token_hex(24))
+    key = f"user:{current_user.id}" if current_user.is_authenticated else f"guest:{session['interest_guest']}"
+    ids = set(db.session.scalars(db.select(ProductInterest.product_id).where(ProductInterest.identity_key == key)))
+    return {"registered_interest_ids": ids}
+
+
+@products_bp.post("/products/<int:product_id>/interest")
+@limiter.limit("10 per minute;60 per hour")
+def register_interest(product_id):
+    from flask import jsonify, session, flash, redirect, url_for
+    from flask_login import current_user
+    from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+    from app.models import ProductInterest
+    from app.services.product_interests import notify_interest
+
+    def response(message, status=200):
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify(message=message, success=status < 400), status
+        flash(message, "success" if status < 400 else "error")
+        return redirect(url_for("products.detail", slug=product.slug) if product else url_for("products.shop"))
+
+    product = db.session.scalar(db.select(Product).where(Product.id == product_id,
+        Product.is_active.is_(True), Product.is_archived.is_(False)).with_for_update())
+    if not product:
+        return response("This product could not be found.", 404)
+    if product.product_status not in {"coming_soon", "out_of_stock"}:
+        return response("This product is available. You can add it to your bag.", 409)
+    if current_user.is_authenticated:
+        key = f"user:{current_user.id}"
+        customer_id = current_user.id
+        name = f"{current_user.first_name} {current_user.last_name}".strip()[:200]
+        email, phone = current_user.email, current_user.phone
+    else:
+        token = session.get("interest_guest")
+        if not token:
+            return response("Please reload the product page and try again.", 400)
+        key, customer_id, name, email, phone = f"guest:{token}", None, None, None, None
+    message = "Thanks! We've recorded your interest in this product."
+    if db.session.scalar(db.select(ProductInterest.id).where(
+        ProductInterest.product_id == product.id, ProductInterest.identity_key == key)):
+        db.session.rollback()
+        return response(message)
+    interest = ProductInterest(product_id=product.id, identity_key=key, customer_id=customer_id,
+        customer_name=name, customer_email=email, customer_phone=phone, product_status=product.product_status)
+    try:
+        db.session.add(interest)
+        db.session.flush()
+        interest_id = interest.id
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        if db.session.scalar(db.select(ProductInterest.id).where(
+            ProductInterest.product_id == product_id, ProductInterest.identity_key == key)):
+            return response(message)
+        current_app.logger.warning("Unable to save product interest.")
+        return response("Something went wrong. Please try again.", 503)
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.warning("Unable to save product interest.")
+        return response("Something went wrong. Please try again.", 503)
+    notify_interest(interest_id)
+    return response(message)

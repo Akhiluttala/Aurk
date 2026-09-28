@@ -9,11 +9,12 @@
 <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/motion.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/header.js') }}" defer></script>
-<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/aurk-mark.svg') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/aurk.css') }}"></head>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/aurk-mark.svg') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/aurk.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
+</head>
 <body class="storefront-theme">
 <div class="aurk-topline"><span>INDIA / STREETWEAR</span><span>PEOPLE &nbsp; PLACES &nbsp; STORIES &nbsp; BEYOND</span><span>A BIGGER TOMORROW</span></div>
 <a class="skip-link" href="#main-content">Skip to content</a>
-<button class="aurk-nav-reveal" type="button" aria-controls="aurk-header" aria-expanded="false" hidden>Show navigation</button>
 <header id="aurk-header" class="nav site-header aurk-editorial-header">
 <a class="logo" href="{{ url_for('main.home') }}">{% include '_brand.html' %}</a>
 <button class="site-menu-toggle" type="button" aria-expanded="false" aria-controls="store-navigation" hidden>Menu</button>

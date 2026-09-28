@@ -4,6 +4,9 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: ${DOCKER_DATABASE_URL:?Set DOCKER_DATABASE_URL in .env}
+      GUNICORN_BIND: 0.0.0.0:8000
+      UPLOAD_DIR: /app/instance/uploads
+    command: ["sh", "-c", "python -m flask --app wsgi:app db upgrade && exec gunicorn -c gunicorn.conf.py wsgi:app"]
     depends_on:
       db:
         condition: service_healthy

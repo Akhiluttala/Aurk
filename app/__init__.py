@@ -93,6 +93,8 @@ def create_app(config_name=None):
 
     from app.services.order_notifications import send_order_alerts_command
     app.cli.add_command(send_order_alerts_command)
+    from app.services.product_interests import send_interest_alerts_command
+    app.cli.add_command(send_interest_alerts_command)
 
     configure_logging(app)
     return app

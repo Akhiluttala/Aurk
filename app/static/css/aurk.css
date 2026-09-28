@@ -114,3 +114,13 @@ html { color-scheme:dark; background:#0e0f11; }
  .aurk-campaign-shade { background:linear-gradient(0deg,#000f,#0009 40%,#0001 80%); }
  .aurk-campaign-image img { object-position:68% center; }
 }
+
+/* Availability subdues only the visual area, preserving readable details. */
+.availability-visual { position: relative; overflow: hidden; isolation: isolate; }
+.availability-visual img { filter: blur(4px) brightness(.65); }
+.availability-visual::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg,transparent,rgba(0,0,0,.3)); pointer-events: none; z-index: 1; }
+.availability-badge { position: absolute; z-index: 2; left: 50%; top: 50%; transform: translate(-50%,-50%); padding: .8rem 1rem; border: 1px solid rgba(255,255,255,.6); background: rgba(15,15,15,.8); color: #fff; font-size: .75rem; font-weight: 700; letter-spacing: .12em; text-align: center; width: max-content; max-width: 90%; pointer-events: none; }
+.product-interest { margin-top: 1rem; }
+.product-interest .interest-button { min-height: 48px; width: 100%; white-space: normal; }
+.interest-button:disabled { opacity: .7; cursor: default; }
+.interest-message { font-size: .85rem; line-height: 1.5; margin-top: .6rem; }

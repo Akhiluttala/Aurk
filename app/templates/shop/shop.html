@@ -179,7 +179,7 @@
             <!-- PRODUCT IMAGE -->
 
             <a
-                class="product-card-image"
+                class="product-card-image {{ 'availability-visual' if product.product_status != 'available' else '' }}"
                 href="{{ url_for(
                     'products.detail',
                     slug=product.slug
@@ -208,7 +208,8 @@
 
                 <!-- PRODUCT BADGE -->
 
-                {% if product.is_new_arrival %}
+                {% if product.product_status != 'available' %}<span class="availability-badge">{{ product.status_label|upper }}</span>
+                {% elif product.is_new_arrival %}
 
                     <span class="product-badge">
                         New
