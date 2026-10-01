@@ -57,6 +57,7 @@ html { color-scheme:dark; background:#0e0f11; }
 .storefront-theme .aurk-campaign { position:relative; isolation:isolate; max-width:none; width:100%; min-height:510px; height:min(70vh,760px); margin:0; padding:65px 5.4%; display:flex; align-items:center; overflow:hidden; background:radial-gradient(ellipse at 70% 35%,#393834,#111 70%); color:#fff; }
 .aurk-campaign-image,.aurk-campaign-shade { position:absolute; inset:0; z-index:-2; }
 .aurk-campaign-image img { display:block; width:100%; height:100%; object-fit:cover; object-position:65% center; }
+.aurk-campaign-image video { display:block; width:100%; height:100%; object-fit:cover; object-position:center; }
 .aurk-campaign-shade { z-index:-1; background:linear-gradient(90deg,#000e 0%,#000b 28%,#0002 65%),linear-gradient(0deg,#0009,transparent 30%); }
 .aurk-campaign-copy { max-width:650px; padding-bottom:35px; animation:aurk-enter .8s ease-out both; }
 .aurk-campaign-copy p { font-size:12px; letter-spacing:.36em; margin:0 0 16px; color:#eee; }

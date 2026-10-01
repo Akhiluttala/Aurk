@@ -2,7 +2,11 @@
 {% block title %}AURK &mdash; Wear your attitude{% endblock %}
 {% block content %}
 <section class="aurk-campaign" aria-label="New collection">
-{% if aurk_hero_available %}<picture class="aurk-campaign-image">{% if aurk_mobile_hero_available %}<source media="(max-width:700px)" srcset="{{ url_for('static', filename='images/brand/hero-mobile.jpg') }}">{% endif %}<img src="{{ url_for('static', filename='images/brand/hero.png') }}" alt="" fetchpriority="high"></picture>{% elif featured and featured[0].primary_image %}<div class="aurk-campaign-image"><img src="{{ url_for('products.product_image', image_id=featured[0].primary_image.id) }}" alt="" fetchpriority="high"></div>{% endif %}
+<div class="aurk-campaign-image">
+<video autoplay loop muted playsinline preload="auto"{% if aurk_hero_available %} poster="{{ url_for('static', filename='images/brand/hero.png') }}"{% endif %} aria-hidden="true">
+<source src="{{ url_for('static', filename='videos/store-cover.mp4') }}" type="video/mp4">
+</video>
+</div>
 <div class="aurk-campaign-shade"></div>
 <div class="aurk-campaign-copy"><p>NEW COLLECTION</p><h1>MORE<br>THAN FITS</h1><p>CLOTHES FOR A BIGGER TOMORROW</p><a class="button" href="{{ url_for('products.shop') }}">SHOP NOW <span aria-hidden="true">&rarr;</span></a></div>
 <div class="aurk-campaign-side" aria-hidden="true">PEOPLE<br>PLACES<br>STORIES<br>BEYOND</div>
