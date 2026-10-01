@@ -115,5 +115,8 @@ class ProductionConfig(BaseConfig):
     DEBUG = False
     TESTING = False
 
-    SESSION_COOKIE_SECURE = True
-    REMEMBER_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = (
+        os.environ.get("SESSION_COOKIE_SECURE", "true").lower() == "true"
+    )
+
+    REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
