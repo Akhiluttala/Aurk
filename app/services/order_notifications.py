@@ -16,7 +16,10 @@ from app.services.email import send_email
 
 
 def queue_order_alerts(order):
-    for channel in ("email", "whatsapp"):
+    channels = ["email"]
+    if current_app.config.get("ORDER_ALERT_WHATSAPP"):
+        channels.append("whatsapp")
+    for channel in channels:
         db.session.add(OrderNotification(order=order, channel=channel))
 
 
@@ -74,7 +77,9 @@ def dispatch_order_alerts(order_id=None):
         if notice.status not in {"pending", "failed"}:
             db.session.commit()
             continue
-        if notice.order.status == "Cancelled":
+        if notice.order.status == "Cancelled" or (
+            notice.channel == "whatsapp" and not current_app.config.get("ORDER_ALERT_WHATSAPP")
+        ):
             notice.status = "skipped"
             notice.last_error = None
             db.session.commit()

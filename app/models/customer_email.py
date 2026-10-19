@@ -1,0 +1,22 @@
+from datetime import datetime, timezone
+from app.extensions import db
+from app.models.types import BigIntPrimaryKey
+
+class CustomerEmail(db.Model):
+    __tablename__ = "customer_emails"
+    id = db.Column(BigIntPrimaryKey, primary_key=True)
+    event_key = db.Column(db.String(100), nullable=False, unique=True)
+    kind = db.Column(db.String(30), nullable=False)
+    user_id = db.Column(db.BigInteger, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    order_id = db.Column(db.BigInteger, db.ForeignKey("orders.id", ondelete="CASCADE"))
+    recipient = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="pending", index=True)
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    next_attempt_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    submitted_at = db.Column(db.DateTime(timezone=True))
+    last_error = db.Column(db.String(200))
+    customer = db.relationship("User")
+    order = db.relationship("Order")
+    __table_args__ = (db.CheckConstraint("kind IN ('welcome','order_received','order_confirmed')", name="ck_customer_email_kind"),
+        db.CheckConstraint("status IN ('pending','failed','submitted','skipped')", name="ck_customer_email_status"))

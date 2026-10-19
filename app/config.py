@@ -48,6 +48,9 @@ class BaseConfig:
     ORDER_ALERT_EMAIL = os.environ.get("ORDER_ALERT_EMAIL", "")
     INTEREST_NOTIFICATION_EMAIL = os.environ.get("INTEREST_NOTIFICATION_EMAIL", "")
     ORDER_ALERT_WHATSAPP = os.environ.get("ORDER_ALERT_WHATSAPP", "")
+    CUSTOMER_EMAILS_ENABLED = os.environ.get("CUSTOMER_EMAILS_ENABLED", "false").lower() == "true"
+    CUSTOMER_SUPPORT_EMAIL = os.environ.get("CUSTOMER_SUPPORT_EMAIL", "support@aurk.in")
+    CUSTOMER_NOREPLY_EMAIL = os.environ.get("CUSTOMER_NOREPLY_EMAIL", "no-reply@aurk.in")
     MAIL_SERVER = os.environ.get("MAIL_SERVER", "")
     MAIL_PORT = int(os.environ.get("MAIL_PORT", "587"))
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
@@ -64,7 +67,7 @@ class BaseConfig:
     MAX_CONTENT_LENGTH = int(
         os.environ.get(
             "MAX_CONTENT_LENGTH",
-            str(8 * 1024 * 1024),
+            str(100 * 1024 * 1024),
         )
     )
 
@@ -87,7 +90,11 @@ class DevelopmentConfig(BaseConfig):
 
 class TestingConfig(BaseConfig):
     TESTING = True
+    CUSTOMER_EMAILS_ENABLED = False
     PUBLIC_BASE_URL = ""
+    CUSTOMER_EMAILS_ENABLED = os.environ.get("CUSTOMER_EMAILS_ENABLED", "false").lower() == "true"
+    CUSTOMER_SUPPORT_EMAIL = os.environ.get("CUSTOMER_SUPPORT_EMAIL", "support@aurk.in")
+    CUSTOMER_NOREPLY_EMAIL = os.environ.get("CUSTOMER_NOREPLY_EMAIL", "no-reply@aurk.in")
     MAIL_SERVER = ""
     WHATSAPP_ACCESS_TOKEN = ""
 

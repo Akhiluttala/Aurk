@@ -170,3 +170,82 @@ def test_admin_status_and_interest_permissions(client, catalog):
         with client.application.app_context():
             assert db.session.get(Product, pid).product_status == status
     assert client.post(f"/admin/products/{pid}/edit", data={**form, "product_status": "invalid"}).status_code == 400
+
+
+def test_coming_soon_optional_price(client, catalog):
+    pid, _, uid = catalog
+    with client.application.app_context():
+        user = db.session.get(User, uid)
+        user.roles.append(Role(name="Admin", permissions=[Permission(name="products.update"), Permission(name="products.create")]))
+        category_id = db.session.get(Product, pid).category_id
+        db.session.commit()
+    assert client.post("/admin/login", data={"email": "buyer@example.com", "password": "StrongPassword123!"}).status_code == 302
+    form = dict(name="Launch Tee", slug="launch", category_id=category_id, is_active="1",
+                product_status="coming_soon", hide_price="1", base_price="")
+    assert client.post(f"/admin/products/{pid}/edit", data=form).status_code == 302
+    with client.application.app_context():
+        product = db.session.get(Product, pid)
+        assert product.hide_price and not product.show_price
+    for path in ("/", "/shop", "/product/launch"):
+        page = client.get(path)
+        assert page.status_code == 200
+        assert b"sale-price" not in page.data
+        assert b"data-variant-price" not in page.data
+        assert b"&#8377;0.00" not in page.data
+    # New coming-soon listings can also be saved without announcing a price.
+    import io
+    from PIL import Image
+    image = io.BytesIO()
+    Image.new("RGB", (32, 40), "black").save(image, format="PNG")
+    image.seek(0)
+    created = client.post("/admin/products/create", data={**form, "name": "Next Tee", "slug": "next-tee",
+        "images": (image, "front.png")}, content_type="multipart/form-data")
+    assert created.status_code == 302
+    with client.application.app_context():
+        new_product = Product.query.filter_by(slug="next-tee").one()
+        assert new_product.hide_price and not new_product.show_price
+    assert b"&#8377;0.00" not in client.get("/product/next-tee").data
+    # Even a crafted request cannot skip pricing on an available product.
+    response = client.post(f"/admin/products/{pid}/edit", data={**form, "product_status": "available"})
+    assert response.status_code == 400
+    with client.application.app_context():
+        assert db.session.get(Product, pid).product_status == "coming_soon"
+    # An announced coming-soon price is still supported.
+    assert client.post(f"/admin/products/{pid}/edit", data={**form, "hide_price": "", "base_price": "1299"}).status_code == 302
+    for path in ("/", "/shop", "/product/launch"):
+        assert b"1299.00" in client.get(path).data
+
+
+def test_gallery_controls_only_visible_on_product_page(client, catalog):
+    from html.parser import HTMLParser
+    from app.models import ProductImage
+    pid, _, _ = catalog
+    with client.application.app_context():
+        product = db.session.get(Product, pid)
+        product.images = [ProductImage(storage_key=f"test/{i}.jpg", mime_type="image/jpeg", file_size=10,
+            width=100, height=100, sort_order=i, is_primary=i == 0) for i in range(2)]
+        db.session.commit()
+    class Visibility(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.hidden_depth = 0
+            self.visible_controls = 0
+            self.controls = 0
+        def handle_starttag(self, tag, attrs):
+            if tag != "div":
+                return
+            attrs = dict(attrs)
+            if self.hidden_depth or "hidden" in attrs:
+                self.hidden_depth += 1
+            if "data-photo-controls" in attrs:
+                self.controls += 1
+                if not self.hidden_depth:
+                    self.visible_controls += 1
+        def handle_endtag(self, tag):
+            if tag == "div" and self.hidden_depth:
+                self.hidden_depth -= 1
+    for path in ("/", "/shop", "/product/launch"):
+        parser = Visibility()
+        parser.feed(client.get(path).data.decode())
+        assert parser.controls > 0
+        assert parser.visible_controls == (1 if path == "/product/launch" else 0)

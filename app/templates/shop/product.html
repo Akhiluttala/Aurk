@@ -4,15 +4,20 @@
 <section class="container commerce-page product-shopping-page">
 <a class="subtle-link" href="{{ url_for('products.shop') }}">&larr; Back to shop</a>
 <div class="shopping-product-layout">
-  <div class="shopping-gallery">
+  <div class="shopping-gallery" data-photo-gallery>
     <div class="shopping-main-image {{ 'availability-visual' if product.product_status != 'available' else '' }}">{% if product.primary_image %}<a class="shopping-image-link" id="fullProductImage" href="{{ url_for('products.product_image', image_id=product.primary_image.id) }}" target="_blank" rel="noopener" aria-label="Open selected product photo at full size in a new tab"><img id="mainProductImage" src="{{ url_for('products.product_image', image_id=product.primary_image.id) }}" alt="{{ product.name }}"></a>{% else %}<div class="shopping-image-empty">AURK<span>Image coming soon</span></div>{% endif %}{% if product.product_status != 'available' %}<span class="availability-badge">{{ product.status_label|upper }}</span>{% endif %}</div>
+    {% include 'shop/_photo_controls.html' %}
+    {% for media in product.images if media.mime_type == 'video/mp4' %}
+    <video class="product-video" controls playsinline preload="metadata" aria-label="{{ product.name }} video {{ loop.index }}"><source src="{{ url_for('products.product_image', image_id=media.id) }}" type="video/mp4">Your browser does not support video playback.</video>
+    {% endfor %}
     {% if product.primary_image %}<p class="gallery-help">Select a photo below to explore every angle or the size chart. Click the large photo to open it at full size in a new tab.</p>{% endif %}
-    {% if product.images|length > 1 %}<div class="shopping-thumbnails">{% for image in product.images %}<button type="button" class="product-thumbnail {{ 'active' if product.primary_image and image.id == product.primary_image.id else '' }}" data-product-image="{{ url_for('products.product_image', image_id=image.id) }}" aria-label="View image {{ loop.index }}" aria-pressed="{{ 'true' if product.primary_image and image.id == product.primary_image.id else 'false' }}"><img src="{{ url_for('products.product_image', image_id=image.id) }}" alt="{{ product.name }} image {{ loop.index }}" loading="lazy"></button>{% endfor %}</div>{% endif %}
   </div>
   <div class="shopping-product-info">
     {% if product.category and product.category.is_active %}<a class="eyebrow" href="{{ url_for('products.shop', category=product.category.slug) }}">{{ product.category.name }}</a>{% endif %}
     <h1>{{ product.name }}</h1>
-    <p class="shopping-price" data-variant-price aria-live="polite">&#8377;{{ '%.2f'|format(min_price) }}{% if max_price != min_price %} &ndash; &#8377;{{ '%.2f'|format(max_price) }}{% endif %}</p>
+    {% if product.show_price %}
+    <p class="shopping-price price-display" aria-live="polite"><del data-original-price {% if product.sale_price is none or product.sale_price >= product.base_price or min_price != product.current_price %}hidden{% endif %}>&#8377;{{ '%.2f'|format(product.base_price) }}</del><span data-variant-price>&#8377;{{ '%.2f'|format(min_price) }}{% if max_price != min_price %} &ndash; &#8377;{{ '%.2f'|format(max_price) }}{% endif %}</span></p>
+    {% endif %}
     <p class="muted">Cash on delivery &middot; Free delivery</p>
     {% if product.description %}<div class="shopping-description">{{ product.description }}</div>{% endif %}
     {% if product.product_status != 'available' %}

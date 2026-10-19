@@ -32,3 +32,6 @@ instance/uploads/**
 !instance/uploads/**/*.jpeg
 !instance/uploads/**/*.webp
 !instance/uploads/.gitkeep
+
+# Customer uploads include private, unapproved photos; never commit them.
+instance/uploads/customer-photos/

@@ -1,4 +1,3 @@
-import re
 from decimal import Decimal
 from uuid import uuid4
 
@@ -17,7 +16,6 @@ from app.models import (
     Payment,
     Product,
 )
-from app.security.validators import safe_text
 from app.services.order_notifications import queue_order_alerts, dispatch_order_alerts
 from app.services.pricing import calculate_subtotal, calculate_total
 
@@ -45,29 +43,8 @@ def _cart_items(cart):
 
 
 def _shipping_details_from_form():
-    """Validate the minimum address data needed to fulfil an order."""
-    fields = {
-        "recipient_name": safe_text(request.form.get("recipient_name"), 200),
-        "phone": safe_text(request.form.get("phone"), 30),
-        "line1": safe_text(request.form.get("line1"), 255),
-        "line2": safe_text(request.form.get("line2"), 255),
-        "city": safe_text(request.form.get("city"), 100),
-        "state": safe_text(request.form.get("state"), 100),
-        "postal_code": safe_text(request.form.get("postal_code"), 20),
-        "country": safe_text(request.form.get("country"), 100) or "India",
-    }
-    for name in ("recipient_name", "phone", "line1", "city", "state", "postal_code"):
-        if not fields[name]:
-            raise ValueError("Please complete all required delivery details.")
-    if fields["country"].lower() != "india":
-        raise ValueError("Delivery is currently available only within India.")
-    fields["country"] = "India"
-    phone = re.sub(r"[\s()+-]", "", fields["phone"])
-    if not phone.isdigit() or not 10 <= len(phone) <= 15:
-        raise ValueError("Enter a valid phone number with 10 to 15 digits.")
-    if fields["country"].lower() == "india" and not re.fullmatch(r"[1-9][0-9]{5}", fields["postal_code"]):
-        raise ValueError("Enter a valid 6-digit Indian PIN code.")
-    return fields
+    from app.services.addresses import validate_shipping_details
+    return validate_shipping_details(request.form)
 
 
 @checkout_bp.route("", methods=["GET", "POST"])
@@ -177,6 +154,8 @@ def checkout():
             for item in items:
                 db.session.delete(item)
             queue_order_alerts(order)
+            from app.services.customer_emails import queue_customer_email
+            queue_customer_email("order_received", current_user, order)
             db.session.commit()
             try:
                 dispatch_order_alerts(order.id)

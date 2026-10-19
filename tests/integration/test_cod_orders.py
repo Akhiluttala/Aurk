@@ -77,7 +77,7 @@ def test_pending_then_owner_confirms_and_customer_sees_status(seeded):
     state = seeded.get(f"/account/orders/{number}/status")
     assert state.json["label"] == "Order confirmed"
     assert "you will receive a call shortly" in state.json["message"]
-    assert state.headers["Cache-Control"] == "no-store"
+    assert state.headers["Cache-Control"] == "no-store, private"
 
 
 def test_other_customer_cannot_read_order_or_status(seeded):
@@ -104,7 +104,8 @@ def test_repeated_checkout_does_not_duplicate_order(seeded):
     with seeded.application.app_context():
         assert Order.query.count() == 1
         assert Inventory.query.one().quantity == 2
-        assert OrderNotification.query.count() == 2
+        assert OrderNotification.query.count() == 1
+        assert OrderNotification.query.one().channel == "email"
 
 
 def test_out_of_stock_does_not_place_order(seeded):
@@ -119,7 +120,7 @@ def test_out_of_stock_does_not_place_order(seeded):
 
 
 def test_alert_failure_keeps_order_and_retry_skips_submitted_channel(seeded, monkeypatch):
-    seeded.application.config.update(PUBLIC_BASE_URL="https://shop.example.com", ORDER_ALERT_EMAIL="owner@example.com")
+    seeded.application.config.update(PUBLIC_BASE_URL="https://shop.example.com", ORDER_ALERT_EMAIL="owner@example.com", ORDER_ALERT_WHATSAPP="919999999999")
     email = Mock()
     whatsapp = Mock(side_effect=RuntimeError("offline"))
     monkeypatch.setattr(alerts, "send_email", email)
@@ -138,6 +139,23 @@ def test_alert_failure_keeps_order_and_retry_skips_submitted_channel(seeded, mon
     assert whatsapp.call_count == 2
     with seeded.application.app_context():
         assert all(n.status == "submitted" for n in OrderNotification.query.all())
+
+
+def test_disabled_whatsapp_skips_previously_queued_alert(seeded, monkeypatch):
+    seeded.application.config["ORDER_ALERT_WHATSAPP"] = ""
+    whatsapp = Mock()
+    monkeypatch.setattr(alerts, "send_whatsapp", whatsapp)
+    place(seeded)
+    with seeded.application.app_context():
+        order = Order.query.one()
+        notice = OrderNotification(order=order, channel="whatsapp")
+        db.session.add(notice)
+        db.session.commit()
+        with seeded.application.test_request_context():
+            alerts.dispatch_order_alerts(order.id)
+        assert notice.status == "skipped"
+        assert notice.attempts == 0
+    whatsapp.assert_not_called()
 
 
 def test_confirmation_requires_csrf(seeded):
@@ -396,7 +414,7 @@ def test_homepage_uses_live_catalogue_and_hides_inactive_products(seeded):
     assert page.status_code == 200
     assert b"Everyday Tee" in page.data
     assert b"999.00" in page.data
-    assert b"New arrivals." in page.data
+    assert b"Fresh fits. New energy." in page.data
     assert b"Hidden draft" not in page.data
     assert b"No featured products yet" not in page.data
 

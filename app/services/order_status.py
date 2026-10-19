@@ -37,6 +37,13 @@ def change_status(order_number, target, actor_id, reason=""):
         db.session.execute(db.update(OrderNotification).where(OrderNotification.order_id == order.id,
             OrderNotification.status.in_(["pending", "failed"])).values(status="skipped", last_error=None))
     order.status = target
+    from app.services.customer_emails import queue_customer_email
+    from app.models import User, CustomerEmail
+    if target == "Confirmed":
+        queue_customer_email("order_confirmed", db.session.get(User, order.user_id), order)
+    elif target == "Cancelled":
+        db.session.execute(db.update(CustomerEmail).where(CustomerEmail.order_id == order.id,
+            CustomerEmail.status.in_(["pending", "failed"])).values(status="skipped", last_error=None))
     db.session.add(AuditLog(actor_user_id=actor_id, action="order." + target.lower(),
         entity_type="order", entity_id=str(order.id),
         details={"previous_status": previous, "status": target, "reason": reason if target == "Cancelled" else None}))

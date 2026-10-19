@@ -64,6 +64,8 @@ def create_app(config_name=None):
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(main_bp)
+    from app.community import community_bp
+    app.register_blueprint(community_bp)
     app.register_blueprint(products_bp)
     app.register_blueprint(cart_bp, url_prefix="/cart")
     app.register_blueprint(checkout_bp, url_prefix="/checkout")
@@ -95,6 +97,10 @@ def create_app(config_name=None):
     app.cli.add_command(send_order_alerts_command)
     from app.services.product_interests import send_interest_alerts_command
     app.cli.add_command(send_interest_alerts_command)
+
+    from app.services.customer_emails import send_customer_emails_command, send_email_test_command
+    app.cli.add_command(send_customer_emails_command)
+    app.cli.add_command(send_email_test_command)
 
     configure_logging(app)
     return app

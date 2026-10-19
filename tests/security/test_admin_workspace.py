@@ -485,3 +485,158 @@ def test_separate_colour_size_fields_without_option_prices(store):
         options = re.findall(rb'<option[^>]*data-stock[^>]*>(.*?)</option>', response.data)
         assert options
         assert all(b"8377" not in text and b"800" not in text for text in options)
+
+
+def test_one_step_listing_creates_stock_and_unique_links(store, tmp_path):
+    import io
+    from PIL import Image
+    sign_in(store)
+    store.application.config["UPLOAD_DIR"] = str(tmp_path)
+    page = store.get("/admin/products/create")
+    assert page.status_code == 200
+    assert b'name="quick_listing"' in page.data
+    assert b'name="slug"' not in page.data
+
+    def submit(**changes):
+        image = io.BytesIO()
+        Image.new("RGB", (8, 8), "white").save(image, format="PNG")
+        image.seek(0)
+        data = dict(quick_listing="1", name="Easy Shirt", base_price="500",
+                    category_id="1", sizes=["S", "M"], color_name="Blue",
+                    quantity="6", is_active="1", images=(image, "front.png"))
+        data.update(changes)
+        return store.post("/admin/products/create", data=data)
+
+    assert submit().location == "/admin/products"
+    assert submit().location == "/admin/products"
+    with store.application.app_context():
+        products = Product.query.filter(Product.name == "Easy Shirt").all()
+        assert {p.slug for p in products} == {"easy-shirt", "easy-shirt-2"}
+        for product in products:
+            assert len(product.images) == 1 and product.images[0].is_primary
+            assert {v.size.name for v in product.variants} == {"S", "M"}
+            assert all(v.inventory.quantity == 6 for v in product.variants)
+        assert InventoryMovement.query.count() == 4
+    files_before = set(tmp_path.rglob("*.png"))
+    response = submit(quantity="-1", name="Keep my details")
+    assert response.status_code == 400
+    assert b'value="Keep my details"' in response.data
+    assert set(tmp_path.rglob("*.png")) == files_before
+    with store.application.app_context():
+        assert Product.query.count() == 3
+        assert InventoryMovement.query.count() == 4
+    assert submit(sizes=[]).status_code == 400
+    assert submit(category_id="9999").status_code == 400
+
+
+def test_percentage_discount_multi_upload_and_store_prices(store, tmp_path):
+    import io
+    from types import SimpleNamespace
+    from PIL import Image
+    from app.services.pricing import calculate_subtotal
+    sign_in(store)
+    store.application.config["UPLOAD_DIR"] = str(tmp_path)
+    uploads = []
+    for name in ("front.png", "back.png"):
+        stream = io.BytesIO()
+        Image.new("RGB", (120, 150), "white").save(stream, format="PNG")
+        stream.seek(0)
+        uploads.append((stream, name))
+    response = store.post("/admin/products/create", data=dict(
+        quick_listing="1", name="Discount Shirt", base_price="999", discount_percent="10",
+        category_id="1", sizes=["S", "M"], color_name="Blue", quantity="5",
+        is_active="1", is_featured="1", images=uploads))
+    assert response.status_code == 302
+    with store.application.app_context():
+        product = Product.query.filter_by(slug="discount-shirt").one()
+        product_id = product.id
+        assert product.base_price == Decimal("999.00")
+        assert product.sale_price == Decimal("899.10")
+        assert len(product.images) == 2
+        assert calculate_subtotal([SimpleNamespace(variant=product.variants[0], quantity=2)]) == Decimal("1798.20")
+    for path in ("/shop", "/", "/product/discount-shirt"):
+        response = store.get(path)
+        assert response.status_code == 200
+        assert b"899.10" in response.data and b"999.00" in response.data
+        assert b"<del" in response.data
+    data = dict(name="Discount Shirt", slug="discount-shirt", base_price="99.99",
+                discount_percent="12.5", category_id="1", is_active="1")
+    assert store.post(f"/admin/products/{product_id}/edit", data=data).status_code == 302
+    with store.application.app_context():
+        assert db.session.get(Product, product_id).sale_price == Decimal("87.49")
+    for invalid in ("101", "-1", "NaN", "Infinity", "abc"):
+        assert store.post(f"/admin/products/{product_id}/edit", data={**data, "discount_percent":invalid}).status_code == 400
+    assert store.post(f"/admin/products/{product_id}/edit", data={**data, "discount_percent":""}).status_code == 302
+    with store.application.app_context():
+        assert db.session.get(Product, product_id).sale_price is None
+
+
+def test_dashboard_reports_dates_exports_and_back_navigation(store):
+    import csv
+    import io
+    from datetime import datetime
+    from app.models import Order, Payment
+    with store.application.app_context():
+        common = dict(user_id=2, subtotal=1000, discount=0, shipping=0, tax=0,
+            total=1000, shipping_name="Customer", shipping_phone="9876543210",
+            shipping_line1="Test", shipping_city="Mumbai", shipping_state="MH",
+            shipping_postal_code="400001", shipping_country="India")
+        included = Order(order_number="=FORMULA", status="Delivered", created_at=datetime(2026,10,10,18,30), **common)
+        excluded = Order(order_number="BEFORE", status="Cancelled", created_at=datetime(2026,10,10,18,29,59), **common)
+        db.session.add_all([included, excluded])
+        db.session.flush()
+        db.session.add(Payment(order_id=included.id, provider="cod", provider_order_id="test-receipt",
+            status="paid", amount=1000, paid_at=datetime(2026,10,11,18,29,59)))
+        product = Product.query.one()
+        product.name = "=PRODUCT"
+        db.session.commit()
+    assert store.get("/admin/reports/summary.csv").status_code == 302
+    sign_in(store, admin=False)
+    assert store.get("/admin/reports/orders.csv").status_code == 403
+    sign_in(store)
+    query = "?start=2026-10-11&end=2026-10-11"
+    dashboard = store.get("/admin/dashboard" + query)
+    assert dashboard.status_code == 200
+    assert b"Export reports" in dashboard.data
+    assert b"1,000.00" in dashboard.data
+    def report(kind):
+        response = store.get(f"/admin/reports/{kind}.csv" + query)
+        assert response.status_code == 200
+        assert "attachment" in response.headers["Content-Disposition"]
+        assert response.headers["Cache-Control"] == "no-store, private"
+        return list(csv.reader(io.StringIO(response.data.decode("utf-8-sig"))))
+    summary = report("summary")
+    values = {row[0]:row[1] for row in summary[1:]}
+    assert values["Orders placed"] == "1"
+    assert values["Order value excluding cancelled"] == "1000.00"
+    assert values["Cash recorded as received"] == "1000.00"
+    orders = report("orders")
+    assert len(orders) == 2
+    assert orders[1][0] == "'=FORMULA"
+    assert orders[1][1].startswith("2026-10-11T00:00:00")
+    assert len(report("receipts")) == 2
+    inventory = report("inventory")
+    assert inventory[1][0] == "'=PRODUCT"
+    assert inventory[1][6] == "3"
+    assert inventory[1][8] == "Yes"
+    assert store.get("/admin/reports/unknown.csv").status_code == 404
+    for path in ("/admin/dashboard", "/admin/reports/summary.csv"):
+        assert store.get(path + "?start=2026-10-12&end=2026-10-11").status_code == 400
+        assert store.get(path + "?start=bad").status_code == 400
+        assert store.get(path + "?start=2020-01-01&end=2026-01-01").status_code == 400
+    assert b'Back to products' in store.get("/admin/products/create").data
+    assert b'Back to products' in store.get("/admin/products/1/edit").data
+    assert b'Back to dashboard' in store.get("/admin/products").data
+    with store.application.app_context():
+        role = Role.query.one()
+        role.permissions = [p for p in role.permissions if p.name not in ("orders.manage", "inventory.manage")]
+        db.session.commit()
+    assert store.get("/admin/reports/summary.csv" + query).status_code == 200
+    assert store.get("/admin/reports/orders.csv" + query).status_code == 403
+    assert store.get("/admin/reports/receipts.csv" + query).status_code == 403
+    assert store.get("/admin/reports/inventory.csv" + query).status_code == 403
+    with store.application.app_context():
+        role = Role.query.one()
+        role.permissions = [p for p in role.permissions if p.name != "analytics.view"]
+        db.session.commit()
+    assert store.get("/admin/reports/summary.csv" + query).status_code == 403

@@ -32,7 +32,7 @@ def _sign_in(client, user_id):
         "password": "StrongPassword123!",
     })
     assert response.status_code == 302
-    assert response.headers["Location"] == "/"
+    assert response.headers["Location"] == "/account/"
 
 
 def test_cart_adds_the_submitted_variant_not_a_matching_variant(client):

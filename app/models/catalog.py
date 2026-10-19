@@ -53,6 +53,18 @@ class Product(db.Model):
     __table_args__ = (db.CheckConstraint("product_status IN ('available', 'coming_soon', 'out_of_stock')", name="ck_product_status"),)
     interests = db.relationship("ProductInterest", back_populates="product", cascade="all, delete-orphan")
 
+    hide_price = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
+
+    @property
+    def show_price(self):
+        return not (self.product_status == "coming_soon" and self.hide_price)
+
+    @property
+    def discount_percent(self):
+        if self.sale_price is None or not self.base_price:
+            return ""
+        return (self.base_price - self.sale_price) * 100 / self.base_price
+
     @property
     def is_purchasable(self):
         return self.is_active and not self.is_archived and self.product_status == "available"
@@ -220,14 +232,8 @@ class Product(db.Model):
         If the product has no images, return None.
         """
 
-        if not self.images:
-            return None
-
-        for image in self.images:
-            if image.is_primary:
-                return image
-
-        return self.images[0] if self.images else None
+        photos = [image for image in self.images if not image.mime_type.startswith("video/")]
+        return next((image for image in photos if image.is_primary), photos[0] if photos else None)
 
 
 

@@ -1,3 +1,5 @@
+from .customer_email import CustomerEmail
+from .customer_photo import CustomerPhoto
 from .admin_session import AdminSession
 from .user import User, Role, Permission
 

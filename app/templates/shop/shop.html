@@ -173,7 +173,7 @@
 
         {% for product in products %}
 
-        <article class="product-card">
+        <article class="product-card" data-photo-gallery>
 
 
             <!-- PRODUCT IMAGE -->
@@ -226,6 +226,8 @@
             </a>
 
 
+            <div hidden data-card-photo-data>{% include 'shop/_photo_controls.html' %}</div>
+
             <!-- PRODUCT INFORMATION -->
 
             <div class="product-card-info">
@@ -258,7 +260,7 @@
 
                 <div class="product-price">
 
-                    <span class="sale-price">{{ 'From ' if product.storefront_price_varies else '' }}&#8377;{{ '%.2f'|format(product.storefront_price) }}</span>
+                    {% include 'shop/_card_price.html' %}
 
                 </div>
 

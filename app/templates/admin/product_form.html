@@ -95,36 +95,7 @@
         </label>
 
 
-        <!-- BASE PRICE -->
-
-        <label>
-            Base price
-
-            <input
-                type="number"
-                name="base_price"
-                min="0"
-                step="0.01"
-                value="{{ product.base_price if product else '' }}"
-                required
-            >
-        </label>
-
-
-        <!-- SALE PRICE -->
-
-        <label>
-            Sale price
-
-            <input
-                type="number"
-                name="sale_price"
-                min="0"
-                step="0.01"
-                value="{{ product.sale_price if product and product.sale_price is not none else '' }}"
-            >
-        </label>
-
+        {% include 'admin/_product_pricing.html' %}
 
         <!-- CATEGORY -->
 
@@ -163,28 +134,29 @@
         ====================================================== -->
 
         <div class="image-upload-section">
+<p class="form-help"><strong>Recommended photo size: 1200 × 1500 pixels (4:5 portrait).</strong> Use JPG, PNG or WEBP. Keep each photo around 200–500 KB and the entire upload under 100 MB. Upload front, back, side and detail views together; the first photo is the cover. Size charts can use their original proportions.</p>
 
             <label for="product-images">
-                Product Images
+                Product Photos and Videos
             </label>
 
             <p class="form-help">
                 Add front, back, side, close-up and size-chart images together using the multiple-file selector. You can also add more images when editing. Choose Make Primary on the front photo to use it as the cover. Size charts keep their original proportions and customers can open them at full size.
                 Recommended: 1200 &times; 1500 pixels (4:5 portrait), JPG or WEBP; PNG is also accepted.
-                Images automatically fit without stretching or cropping. Use consistent backgrounds and leave a little space around the product.
-                Upload up to 10 images; keep each around 200&ndash;500 KB and the entire upload below 8 MB.
+                Storefront photos fill the image area; different proportions may be cropped. Use consistent backgrounds and leave a little space around the product.
+                Upload up to 10 photos and videos; keep each around 200&ndash;500 KB and the entire upload below 100 MB.
             </p>
 
             <input
                 id="product-images"
                 type="file"
-                name="images"
-                accept="image/jpeg,image/png,image/webp"
+                name="images" data-image-upload data-existing-count="{{ product.images|length if product else 0 }}"
+                accept="image/jpeg,image/png,image/webp,video/mp4,.mp4"
                 multiple
                 {% if not edit_mode %}
                     required
                 {% endif %}
-            >
+            ><p class="form-help">Select several photos together, or choose more photos in another selection. Up to 10 photos and videos per product. MP4 videos: up to 25 MB each. Photos: up to 8 MB each. Total upload: under 100 MB.</p><div data-upload-list aria-live="polite"></div>
 
         </div>
 
@@ -216,7 +188,7 @@
 
                 <div>
                     <h2>
-                        Saved Product Images
+                        Saved Product Media
                     </h2>
 
                     <p class="form-help">
@@ -234,7 +206,7 @@
 
                     <article
                         class="existing-image-card
-                        {% if image.is_primary %}
+                        {% if image.is_primary and image.mime_type != 'video/mp4' %}
                             is-primary
                         {% endif %}"
                     >
@@ -243,13 +215,13 @@
 
                         <div class="existing-image-preview">
 
-                            <img
+{% if image.mime_type == 'video/mp4' %}<video controls playsinline preload="metadata" src="{{ url_for('admin.product_image', image_id=image.id) }}"></video>{% else %}                            <img
                                 src="{{ url_for('admin.product_image', image_id=image.id) }}"
                                 alt="{{ product.name }} image {{ loop.index }}"
                                 loading="lazy"
-                            >
+                            >{% endif %}
 
-                            {% if image.is_primary %}
+                            {% if image.is_primary and image.mime_type != 'video/mp4' %}
 
                                 <span class="primary-image-badge">
                                     ★ Primary
@@ -279,13 +251,13 @@
 
                         <div class="existing-image-actions">
 
-                            {% if image.is_primary %}
+                            {% if image.is_primary and image.mime_type != 'video/mp4' %}
 
                                 <span class="current-primary-label">
                                     ★ Primary Image
                                 </span>
 
-                            {% else %}
+                            {% elif image.mime_type != 'video/mp4' %}
 
                                 <form
                                     method="post"
@@ -364,7 +336,7 @@
         <section class="existing-images-section">
 
             <h2>
-                Saved Product Images
+                Saved Product Media
             </h2>
 
             <p class="form-help">

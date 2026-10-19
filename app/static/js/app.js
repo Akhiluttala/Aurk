@@ -45,30 +45,6 @@ document.querySelectorAll('[data-variant-fields]').forEach(fields => {
   sizes();
 });
 
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('form[data-confirm]').forEach((form) => {
-    form.addEventListener('submit', (event) => {
-      if (!window.confirm(form.dataset.confirm)) event.preventDefault();
-    });
-  });
-
-  const mainProductImage = document.getElementById('mainProductImage');
-  document.querySelectorAll('[data-product-image]').forEach((thumbnail) => {
-    thumbnail.addEventListener('click', () => {
-      if (!mainProductImage) return;
-      mainProductImage.src = thumbnail.dataset.productImage;
-        mainProductImage.alt = thumbnail.querySelector('img')?.alt || 'Product photo';
-        const fullImage = document.getElementById('fullProductImage');
-        if (fullImage) fullImage.href = thumbnail.dataset.productImage;
-      document.querySelectorAll('[data-product-image]').forEach((item) => {
-        item.classList.remove('active');
-        item.setAttribute('aria-pressed', 'false');
-      });
-      thumbnail.classList.add('active');
-      thumbnail.setAttribute('aria-pressed', 'true');
-    });
-  });
-});
 
 
 document.querySelectorAll('form[data-submit-once]').forEach((form) => {
@@ -106,6 +82,8 @@ document.querySelectorAll('[data-variant-form]').forEach((form) => {
   const price = document.querySelector('[data-variant-price]');
   const stock = form.querySelector('[data-variant-stock]');
   const initialPrice = price.textContent;
+  const originalPrice = form.closest('.shopping-product-info').querySelector('[data-original-price]');
+  const originalHidden = originalPrice?.hidden;
   form.querySelectorAll('[data-quantity-step]').forEach(button => {
     button.hidden = false;
     button.addEventListener('click', () => {
@@ -118,11 +96,16 @@ document.querySelectorAll('[data-variant-form]').forEach((form) => {
     const option = select.selectedOptions[0];
     if (!option?.value) {
       price.textContent = initialPrice;
+      if (originalPrice) originalPrice.hidden = originalHidden;
       stock.textContent = 'Choose an option to see availability.';
       quantity.max = '99';
       return;
     }
     const available = Number(option.dataset.stock);
+    if (originalPrice) {
+      originalPrice.hidden = !option.dataset.originalPrice;
+      if (!originalPrice.hidden) originalPrice.textContent = new Intl.NumberFormat('en-IN', {style:'currency',currency:'INR'}).format(Number(option.dataset.originalPrice));
+    }
     price.textContent = new Intl.NumberFormat('en-IN', {style: 'currency', currency: 'INR'}).format(Number(option.dataset.price));
     quantity.max = String(available);
     if (Number(quantity.value) > available) quantity.value = String(available);
@@ -207,4 +190,138 @@ document.querySelectorAll('[data-interest-form]').forEach((form) => {
       message.textContent = error instanceof SyntaxError ? 'Something went wrong. Please reload and try again.' : error.message;
     }
   });
+});
+
+// Scope each photo gallery to its own product, including repeated home cards.
+document.querySelectorAll('[data-photo-gallery]').forEach(gallery => {
+  const photo = gallery.querySelector('.shopping-image-link img, .home-product-image img, .product-card-image img');
+  const options = [...gallery.querySelectorAll('[data-photo-source]')];
+  if (!photo || options.length < 2) return;
+  let index = Math.max(0, options.findIndex(button => button.getAttribute('aria-pressed') === 'true'));
+  const count = gallery.querySelector('[data-photo-count]');
+  const surface = photo.closest('a');
+  const track = document.createElement('span');
+  track.className = 'product-photo-track';
+  options.forEach(option => {
+    const image = document.createElement('img');
+    image.src = option.dataset.photoSource;
+    image.alt = option.dataset.photoAlt;
+    image.draggable = false;
+    image.loading = 'lazy';
+    track.append(image);
+  });
+  photo.replaceWith(track);
+  surface.classList.add('product-photo-slider');
+  surface.setAttribute('aria-label', 'Drag or swipe to change product photo. Click to open photo.');
+  let gesture = null;
+  let blockClickUntil = 0;
+  let hoverRestoreIndex = null;
+  if (gallery.classList.contains('home-product-card')) {
+    surface.addEventListener('pointerenter', event => {
+      if (event.pointerType !== 'mouse' || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+      hoverRestoreIndex = index;
+      show(index + 1);
+    });
+    surface.addEventListener('pointerleave', () => {
+      if (hoverRestoreIndex === null) return;
+      show(hoverRestoreIndex);
+      hoverRestoreIndex = null;
+    });
+  }
+  surface.addEventListener('dragstart', event => event.preventDefault());
+  surface.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'touch') return;
+    if (!event.isPrimary || event.button !== 0) return;
+    hoverRestoreIndex = null;
+    gesture = {id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, dragging: false};
+  });
+  surface.addEventListener('pointermove', event => {
+    if (event.pointerType === 'touch') return;
+    if (!gesture || event.pointerId !== gesture.id) return;
+    const dx = event.clientX - gesture.x;
+    const dy = event.clientY - gesture.y;
+    if (!gesture.dragging && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) { gesture = null; return; }
+    if (!gesture.dragging && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+      gesture.dragging = true;
+      if (!gesture.touch) surface.setPointerCapture(event.pointerId);
+      surface.classList.add('is-dragging');
+    }
+    if (!gesture.dragging) return;
+    if (event.cancelable) event.preventDefault();
+    gesture.dx = dx;
+    track.style.transform = 'translateX(calc(' + (-index * 100) + '% + ' + dx + 'px))';
+  });
+  function finish(event, cancelled = false) {
+    if (!gesture || event.pointerId !== gesture.id) return;
+    const previous = gesture;
+    gesture = null;
+    surface.classList.remove('is-dragging');
+    if (!previous.touch && surface.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
+    if (previous.dragging) {
+      blockClickUntil = Date.now() + 400;
+      const threshold = Math.min(80, surface.clientWidth * .18);
+      show(!cancelled && Math.abs(previous.dx) >= threshold ? index + (previous.dx < 0 ? 1 : -1) : index);
+    }
+  }
+  surface.addEventListener('pointerup', event => { if (!gesture?.touch) finish(event); });
+  surface.addEventListener('pointercancel', event => { if (!gesture?.touch) finish(event, true); });
+  surface.addEventListener('lostpointercapture', event => { if (!gesture?.touch) finish(event, true); });
+  surface.addEventListener('touchstart', event => {
+    if (event.touches.length !== 1) { if (gesture?.touch) finish({pointerId: gesture.id}, true); return; }
+    const touch = event.touches[0];
+    gesture = {id: touch.identifier, x: touch.clientX, y: touch.clientY, dx: 0, dragging: false, touch: true};
+  }, {passive: true});
+  surface.addEventListener('touchmove', event => {
+    if (!gesture?.touch) return;
+    const touch = [...event.touches].find(item => item.identifier === gesture.id);
+    if (!touch) return;
+    const dx = touch.clientX - gesture.x;
+    const dy = touch.clientY - gesture.y;
+    if (!gesture.dragging && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) { gesture = null; return; }
+    if (!gesture.dragging && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+      gesture.dragging = true;
+      surface.classList.add('is-dragging');
+    }
+    if (!gesture.dragging) return;
+    if (event.cancelable) event.preventDefault();
+    gesture.dx = dx;
+    track.style.transform = 'translateX(calc(' + (-index * 100) + '% + ' + dx + 'px))';
+  }, {passive: false});
+  surface.addEventListener('touchend', event => {
+    if (!gesture?.touch) return;
+    if ([...event.changedTouches].some(touch => touch.identifier === gesture.id)) finish({pointerId: gesture.id});
+  });
+  surface.addEventListener('touchcancel', () => { if (gesture?.touch) finish({pointerId: gesture.id}, true); });
+  surface.addEventListener('click', event => {
+    if (Date.now() < blockClickUntil) { event.preventDefault(); event.stopPropagation(); }
+  }, true);
+
+  function show(next) {
+    index = (next + options.length) % options.length;
+    track.style.transform = 'translateX(' + (-index * 100) + '%)';
+    const full = gallery.querySelector('.shopping-image-link');
+    if (full) full.href = options[index].dataset.photoSource;
+    options.forEach((button, position) => button.setAttribute('aria-pressed', String(position === index)));
+    count.textContent = 'Photo ' + (index + 1) + ' of ' + options.length;
+  }
+  options.forEach((button, position) => button.addEventListener('click', () => {
+    hoverRestoreIndex = null;
+    show(position);
+  }));
+  const previousButton = gallery.querySelector('[data-photo-prev]');
+  const nextButton = gallery.querySelector('[data-photo-next]');
+  if (previousButton && nextButton) {
+    previousButton.hidden = nextButton.hidden = false;
+    previousButton.addEventListener('click', () => show(index - 1));
+    nextButton.addEventListener('click', () => show(index + 1));
+  }
+
+  gallery.querySelector('[data-photo-controls]').addEventListener('keydown', event => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      show(index + (event.key === 'ArrowLeft' ? -1 : 1));
+      options[index].focus();
+    }
+  });
+  show(index);
 });

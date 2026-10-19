@@ -2,6 +2,9 @@ from flask import current_app, request
 
 
 def apply_security_headers(response):
+    if request.path == "/account" or request.path.startswith("/account/"):
+        response.headers["Cache-Control"] = "no-store, private"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
     if request.path == "/admin" or request.path.startswith("/admin/"):
         response.headers["Cache-Control"] = "no-store, private"
         response.headers["X-Robots-Tag"] = "noindex, nofollow"

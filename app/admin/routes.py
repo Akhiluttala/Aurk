@@ -1,3 +1,4 @@
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from uuid import uuid4
 
@@ -79,6 +80,10 @@ def save_product_image(file_storage, product_id, sort_order):
 
     if not file_storage or not file_storage.filename:
         raise ValueError("Invalid image file.")
+
+    if Path(file_storage.filename).suffix.lower() == ".mp4":
+        from app.services.product_video import save_product_video
+        return save_product_video(file_storage, product_id, sort_order)
 
     # Read file safely into memory.
     file_storage.stream.seek(0)
@@ -172,6 +177,24 @@ def products():
     )
 
 
+def _discounted_price(base_price):
+    """Calculate the selling price on the server; retain legacy sale-price posts."""
+    if "discount_percent" not in request.form:
+        return validate_money(request.form["sale_price"]) if request.form.get("sale_price") else None
+    raw = safe_text(request.form.get("discount_percent"), 40)
+    if not raw:
+        return None
+    try:
+        percent = Decimal(raw)
+    except InvalidOperation:
+        raise ValueError("Enter a discount percentage between 0 and 100.") from None
+    if not percent.is_finite() or not 0 <= percent <= 100:
+        raise ValueError("Enter a discount percentage between 0 and 100.")
+    if percent == 0:
+        return None
+    return (base_price * (Decimal("100") - percent) / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 @admin_bp.route("/products/create", methods=["GET", "POST"])
 @login_required
 @permission_required("products.create")
@@ -184,6 +207,7 @@ def create_product():
     )
 
     if request.method == "POST":
+        saved_image_paths = []
 
         try:
             name = safe_text(
@@ -191,24 +215,23 @@ def create_product():
                 255
             )
 
-            slug = safe_slug(
-                request.form.get("slug")
-            )
+            slug = safe_slug(request.form.get("slug") or name or "product")
+            if not request.form.get("slug"):
+                base_slug = slug
+                suffix = 2
+                while Product.query.filter_by(slug=slug).first():
+                    slug = f"{base_slug}-{suffix}"
+                    suffix += 1
 
             description = safe_text(
                 request.form.get("description"),
                 10000
             )
 
-            base_price = validate_money(
-                request.form.get("base_price")
-            )
-
-            sale_price = (
-                validate_money(request.form.get("sale_price"))
-                if request.form.get("sale_price")
-                else None
-            )
+            hide_price = _product_status() == "coming_soon" and request.form.get("hide_price") == "1"
+            raw_price = request.form.get("base_price", "").strip()
+            base_price = Decimal("0") if hide_price and not raw_price else validate_money(raw_price)
+            sale_price = None if hide_price and not raw_price else _discounted_price(base_price)
 
             category_id = request.form.get(
                 "category_id",
@@ -220,7 +243,7 @@ def create_product():
                     "Sale price cannot exceed base price."
                 )
 
-            if not category_id:
+            if not category_id or db.session.get(Category, category_id) is None:
                 raise ValueError(
                     "Please select a category."
                 )
@@ -238,6 +261,7 @@ def create_product():
             # Create product first so we have product.id.
             product = Product(
                 product_status=_product_status(),
+                hide_price=hide_price,
                 name=name,
                 slug=slug,
                 description=description,
@@ -253,6 +277,9 @@ def create_product():
             db.session.add(product)
             db.session.flush()
 
+            if request.form.get("quick_listing") == "1":
+                _add_product_variants(product)
+
             # Multiple product images.
             image_files = request.files.getlist("images")
 
@@ -264,12 +291,12 @@ def create_product():
 
             if not valid_files:
                 raise ValueError(
-                    "Please upload at least one product image."
+                    "Please upload at least one product photo or video."
                 )
 
             if len(valid_files) > 10:
                 raise ValueError(
-                    "You can upload a maximum of 10 images."
+                    "You can upload a maximum of 10 photos or videos."
                 )
 
             for index, file_storage in enumerate(valid_files):
@@ -280,6 +307,8 @@ def create_product():
                     index
                 )
 
+                saved_image_paths.append(Path(current_app.config["UPLOAD_DIR"]) / image_data["storage_key"])
+
                 product_image = ProductImage(
                     product_id=product.id,
                     storage_key=image_data["storage_key"],
@@ -288,28 +317,36 @@ def create_product():
                     width=image_data["width"],
                     height=image_data["height"],
                     sort_order=index,
-                    is_primary=(index == 0),
+                    is_primary=(index == 0 and not image_data["mime_type"].startswith("video/")),
                 )
 
                 db.session.add(product_image)
 
             db.session.commit()
 
+            if request.form.get("quick_listing") == "1":
+                flash("Product listed with photos, sizes and stock. You can add another product now.", "success")
+                return redirect(url_for("admin.products"))
             flash("Product saved. Add its sizes, colours and opening stock below to finish setting up inventory.", "success")
             return redirect(url_for("admin.edit_product", product_id=product.id))
 
         except Exception as exc:
 
             db.session.rollback()
+            for image_path in saved_image_paths:
+                try:
+                    image_path.unlink(missing_ok=True)
+                except OSError:
+                    current_app.logger.warning("Unable to remove an uncommitted product image.")
 
             return render_template(
-                "admin/product_form.html",
+                "admin/product_create.html",
                 categories=categories,
                 error=str(exc) if isinstance(exc, ValueError) else "Unable to save product. Check for a duplicate slug or SKU and try again.",
             ), 400
 
     return render_template(
-        "admin/product_form.html",
+        "admin/product_create.html",
         categories=categories,
     )
 
@@ -343,15 +380,10 @@ def edit_product(product_id):
                 10000
             )
 
-            base_price = validate_money(
-                request.form.get("base_price")
-            )
-
-            sale_price = (
-                validate_money(request.form.get("sale_price"))
-                if request.form.get("sale_price")
-                else None
-            )
+            hide_price = _product_status() == "coming_soon" and request.form.get("hide_price") == "1"
+            raw_price = request.form.get("base_price", "").strip()
+            base_price = Decimal("0") if hide_price and not raw_price else validate_money(raw_price)
+            sale_price = None if hide_price and not raw_price else _discounted_price(base_price)
 
             category_id = request.form.get(
                 "category_id",
@@ -395,6 +427,7 @@ def edit_product(product_id):
 
             # Update product information.
             product.product_status = _product_status(product.product_status)
+            product.hide_price = hide_price
             product.name = name
             product.slug = slug
             product.description = description
@@ -424,7 +457,7 @@ def edit_product(product_id):
 
             if total_images > 10:
                 raise ValueError(
-                    "A product can have a maximum of 10 images."
+                    "A product can have a maximum of 10 photos or videos."
                 )
 
             next_sort_order = (
@@ -530,6 +563,53 @@ def delete_product(product_id):
     return redirect(url_for("admin.products"))
 
 
+def _add_product_variants(product):
+    """Add selected sizes and audited stock within the caller's transaction."""
+    selected_sizes = request.form.getlist("sizes")
+    if selected_sizes:
+        allowed = {"XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "One size"}
+        if any(value not in allowed for value in selected_sizes):
+            raise ValueError("Choose sizes from the available buttons.")
+    size_names = selected_sizes or [safe_text(value, 30) for value in request.form.get("size_name", "").split(",") if value.strip()]
+    custom_size = safe_text(request.form.get("custom_size"), 30)
+    if custom_size:
+        size_names.append(custom_size)
+    size_names = list(dict.fromkeys(size_names))
+    color_name = safe_text(request.form.get("color_name"), 50)
+    # Keep older form submissions compatible; the new UI never asks for a SKU.
+    sku = safe_text(request.form.get("sku"), 80).upper() if not selected_sizes and not custom_size else ""
+    quantity = request.form.get("quantity", type=int)
+    price_override = request.form.get("price_override")
+    if not size_names or len(size_names) > 20 or not color_name:
+        raise ValueError("Select at least one size and enter a colour.")
+    if quantity is None or not 0 <= quantity <= 1_000_000:
+        raise ValueError("Opening stock must be between 0 and 1,000,000 per size.")
+    price = validate_money(price_override) if price_override else None
+    color = Color.query.filter_by(name=color_name).first()
+    if not color:
+        color = Color(name=color_name)
+        db.session.add(color)
+        db.session.flush()
+    for size_name in size_names:
+        option_sku = (sku if len(size_names) == 1 else f"{sku}-{safe_slug(size_name).upper()}") if sku else f"ARD-{product.id}-{uuid4().hex[:16].upper()}"
+        if len(option_sku) > 100 or ProductVariant.query.filter_by(sku=option_sku).first():
+            raise ValueError("One of these SKUs already exists or is too long. Use a different prefix.")
+        size = Size.query.filter_by(name=size_name).first()
+        if not size:
+            size = Size(name=size_name)
+            db.session.add(size)
+            db.session.flush()
+        if ProductVariant.query.filter_by(product_id=product.id, size_id=size.id, color_id=color.id).first():
+            raise ValueError(f"{size_name} / {color_name} already exists. Update its stock above instead.")
+        variant = ProductVariant(product_id=product.id, size_id=size.id, color_id=color.id,
+            sku=option_sku, price_override=price, is_active=True)
+        db.session.add(variant)
+        db.session.flush()
+        db.session.add(Inventory(variant_id=variant.id, quantity=quantity, reserved_quantity=0))
+        db.session.add(InventoryMovement(variant_id=variant.id, quantity_delta=quantity,
+            reason="opening_stock", created_by=current_user.id, reference=f"product:{product.id}"))
+
+
 @admin_bp.post("/products/<int:product_id>/variants")
 @login_required
 @permission_required("products.update")
@@ -537,49 +617,7 @@ def create_variant(product_id):
     """Create a sellable SKU and its opening inventory balance."""
     product = Product.query.filter_by(id=product_id, is_archived=False).first_or_404()
     try:
-        selected_sizes = request.form.getlist("sizes")
-        if selected_sizes:
-            allowed = {"XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "One size"}
-            if any(value not in allowed for value in selected_sizes):
-                raise ValueError("Choose sizes from the available buttons.")
-        size_names = selected_sizes or [safe_text(value, 30) for value in request.form.get("size_name", "").split(",") if value.strip()]
-        custom_size = safe_text(request.form.get("custom_size"), 30)
-        if custom_size:
-            size_names.append(custom_size)
-        size_names = list(dict.fromkeys(size_names))
-        color_name = safe_text(request.form.get("color_name"), 50)
-        # Keep older form submissions compatible; the new UI never asks for a SKU.
-        sku = safe_text(request.form.get("sku"), 80).upper() if not selected_sizes and not custom_size else ""
-        quantity = request.form.get("quantity", type=int)
-        price_override = request.form.get("price_override")
-        if not size_names or len(size_names) > 20 or not color_name:
-            raise ValueError("Select at least one size and enter a colour.")
-        if quantity is None or not 0 <= quantity <= 1_000_000:
-            raise ValueError("Opening stock must be between 0 and 1,000,000 per size.")
-        price = validate_money(price_override) if price_override else None
-        color = Color.query.filter_by(name=color_name).first()
-        if not color:
-            color = Color(name=color_name)
-            db.session.add(color)
-            db.session.flush()
-        for size_name in size_names:
-            option_sku = (sku if len(size_names) == 1 else f"{sku}-{safe_slug(size_name).upper()}") if sku else f"ARD-{product.id}-{uuid4().hex[:16].upper()}"
-            if len(option_sku) > 100 or ProductVariant.query.filter_by(sku=option_sku).first():
-                raise ValueError("One of these SKUs already exists or is too long. Use a different prefix.")
-            size = Size.query.filter_by(name=size_name).first()
-            if not size:
-                size = Size(name=size_name)
-                db.session.add(size)
-                db.session.flush()
-            if ProductVariant.query.filter_by(product_id=product.id, size_id=size.id, color_id=color.id).first():
-                raise ValueError(f"{size_name} / {color_name} already exists. Update its stock above instead.")
-            variant = ProductVariant(product_id=product.id, size_id=size.id, color_id=color.id,
-                sku=option_sku, price_override=price, is_active=True)
-            db.session.add(variant)
-            db.session.flush()
-            db.session.add(Inventory(variant_id=variant.id, quantity=quantity, reserved_quantity=0))
-            db.session.add(InventoryMovement(variant_id=variant.id, quantity_delta=quantity,
-                reason="opening_stock", created_by=current_user.id, reference=f"product:{product.id}"))
+        _add_product_variants(product)
         db.session.commit()
     except (ValueError, IntegrityError) as exc:
         db.session.rollback()
@@ -644,6 +682,10 @@ def set_primary_image(product_id, image_id):
         id=image_id,
         product_id=product_id
     ).first_or_404()
+
+    if image.mime_type.startswith("video/"):
+        flash("Choose a photo as the product cover. Videos appear in the product gallery.", "error")
+        return redirect(url_for("admin.edit_product", product_id=product.id))
 
     # Remove primary status from all images
     for product_image in product.images:
@@ -906,3 +948,38 @@ def interests():
         .join(ProductInterest).group_by(Product.id, Product.name).order_by(Product.name)).all()
     return render_template("admin/interests.html", pagination=pagination, counts=counts,
         total=sum(row[2] for row in counts), product_id=product_id)
+
+
+@admin_bp.get("/worn-by-you")
+@permission_required("reviews.manage")
+def worn_by_you():
+    from app.models import CustomerPhoto
+    from sqlalchemy.orm import selectinload
+    status = request.args.get("status", "pending")
+    if status not in {"pending", "approved", "rejected", "withdrawn"}:
+        abort(400)
+    pagination = db.paginate(db.select(CustomerPhoto).where(CustomerPhoto.status == status)
+        .options(selectinload(CustomerPhoto.customer), selectinload(CustomerPhoto.order_item))
+        .order_by(CustomerPhoto.created_at.desc(), CustomerPhoto.id.desc()),
+        page=max(1, request.args.get("page", 1, type=int)), per_page=24, error_out=False)
+    return render_template("admin/customer_photos.html", pagination=pagination, status=status)
+
+
+@admin_bp.post("/worn-by-you/<int:photo_id>")
+@permission_required("reviews.manage")
+def moderate_customer_photo(photo_id):
+    from app.models import CustomerPhoto
+    from app.admin.management import audit
+    entry = db.session.scalar(db.select(CustomerPhoto).where(CustomerPhoto.id == photo_id).with_for_update())
+    if entry is None:
+        abort(404)
+    action = request.form.get("action")
+    if action not in {"approve", "reject"}:
+        abort(400)
+    if entry.status == "withdrawn":
+        abort(409)
+    entry.status = "approved" if action == "approve" else "rejected"
+    audit("customer_photo." + entry.status, "customer_photo", entry.id)
+    db.session.commit()
+    flash("Customer photo updated.", "success")
+    return redirect(url_for("admin.worn_by_you"))

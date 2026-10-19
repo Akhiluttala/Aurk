@@ -55,18 +55,21 @@ def metrics():
     booked = db.session.scalar(db.select(func.coalesce(func.sum(Order.total), 0)).where(Order.status != "Cancelled"))
     recent_received = db.session.scalar(db.select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.status == "paid", Payment.paid_at >= since))
     customers = db.session.scalar(db.select(func.count()).select_from(customer_query().subquery()))
-    products = db.session.scalar(db.select(func.count(Product.id)))
-    low = db.session.scalar(db.select(func.count(Inventory.id)).where(Inventory.quantity - Inventory.reserved_quantity <= Inventory.low_stock_threshold))
+    products = db.session.scalar(db.select(func.count(Product.id)).where(Product.is_archived.is_(False)))
+    low = db.session.scalar(db.select(func.count(ProductVariant.id)).join(Product).outerjoin(Inventory).where(Product.is_archived.is_(False), or_(Inventory.id.is_(None), Inventory.quantity - Inventory.reserved_quantity <= Inventory.low_stock_threshold)))
     return dict(orders=total_orders, open_orders=open_orders, received=received, booked=booked,
         recent_received=recent_received, customers=customers, products=products, low_stock=low)
 
 
 def register_management(bp):
+    from app.admin.reports import register_reports, period, overview, bounds
+    register_reports(bp)
     @bp.get("/dashboard")
     @permission_required("dashboard.view")
     def dashboard():
-        recent = db.session.scalars(db.select(Order).order_by(Order.created_at.desc(), Order.id.desc()).limit(6)).all()
-        return render_template("admin/dashboard.html", stats=metrics(), recent=recent)
+        dates = period()
+        recent = db.session.scalars(db.select(Order).where(*bounds(Order.created_at, dates)).order_by(Order.created_at.desc(), Order.id.desc()).limit(6)).all()
+        return render_template("admin/dashboard.html", stats=metrics(), recent=recent, dates=dates, report=overview(dates))
 
     @bp.get("/customers")
     @permission_required("customers.manage")

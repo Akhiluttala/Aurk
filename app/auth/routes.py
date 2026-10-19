@@ -65,6 +65,8 @@ def register():
                 raise ValueError("Unable to create account with those details.")
             user = User(email=email, first_name=first, last_name=last, password_hash=generate_password_hash(password))
             db.session.add(user)
+            from app.services.customer_emails import queue_customer_email
+            queue_customer_email("welcome", user)
             db.session.commit()
             flash("Account created. Please sign in.", "success")
             return redirect(url_for("auth.login", next=next_url))
@@ -78,7 +80,7 @@ def register():
 def login():
     next_url = _safe_next_url(request.args.get("next"))
     if current_user.is_authenticated:
-        return redirect(next_url or url_for("main.home"))
+        return redirect(next_url or url_for("orders.dashboard"))
 
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
@@ -104,7 +106,7 @@ def login():
             if next_url:
                 return redirect(next_url)
 
-            return redirect(url_for("main.home"))
+            return redirect(url_for("orders.dashboard"))
 
     return render_template("auth/login.html", next_url=next_url)
 

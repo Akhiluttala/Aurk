@@ -59,8 +59,10 @@
                     </div>
 
                     <div class="admin-product-meta">
+{% if product.show_price %}
                         <strong>₹{{ '%.2f'|format(product.current_price) }}</strong>
                         {% if product.sale_price is not none %}<span>was ₹{{ '%.2f'|format(product.base_price) }}</span>{% endif %}
+{% else %}<strong>Price not announced</strong>{% endif %}
                         {% if product.is_featured %}<span class="tag">Featured</span>{% endif %}
                         {% if product.is_new_arrival %}<span class="tag">New</span>{% endif %}
                         {% if product.is_bestseller %}<span class="tag">Bestseller</span>{% endif %}
