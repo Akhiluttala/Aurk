@@ -2,6 +2,21 @@ import pytest
 from scripts.preview_customer_emails import sample_order
 from app.services.customer_email_templates import render_customer_order_email
 
+
+def test_notify_uses_shared_branding_and_escapes_product_name(app):
+    from types import SimpleNamespace
+    from app.services.customer_email_templates import render_customer_interest_email
+    with app.app_context():
+        result = render_customer_interest_email(SimpleNamespace(first_name="Buyer"),
+            SimpleNamespace(name='<script>alert("x")</script>', slug="launch"), public_base_url="https://aurk.in")
+    assert '<script>' not in result.html
+    assert '&lt;script&gt;' in result.html
+    assert 'bgcolor="#000000"' in result.html
+    assert 'cid:aurk-logo' in result.html
+    assert 'https://aurk.in/product/launch' in result.html
+    assert result.from_email == result.reply_to == "no-reply@aurk.in"
+    assert "We will update you when the drop is live" in result.text
+
 @pytest.mark.parametrize("kind",["order_received","order_confirmed"])
 def test_order_email_content_and_reply_address(app,kind,monkeypatch):
     def unexpected_send(*args,**kwargs):

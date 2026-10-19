@@ -9,6 +9,7 @@ class CustomerEmail(db.Model):
     kind = db.Column(db.String(30), nullable=False)
     user_id = db.Column(db.BigInteger, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     order_id = db.Column(db.BigInteger, db.ForeignKey("orders.id", ondelete="CASCADE"))
+    interest_id = db.Column(db.BigInteger, db.ForeignKey("product_interests.id", ondelete="SET NULL"))
     recipient = db.Column(db.String(255), nullable=False)
     status = db.Column(db.String(20), nullable=False, default="pending", index=True)
     attempts = db.Column(db.Integer, nullable=False, default=0)
@@ -18,5 +19,6 @@ class CustomerEmail(db.Model):
     last_error = db.Column(db.String(200))
     customer = db.relationship("User")
     order = db.relationship("Order")
-    __table_args__ = (db.CheckConstraint("kind IN ('welcome','order_received','order_confirmed')", name="ck_customer_email_kind"),
+    interest = db.relationship("ProductInterest")
+    __table_args__ = (db.CheckConstraint("kind IN ('welcome','order_received','order_confirmed','notify_interest')", name="ck_customer_email_kind"),
         db.CheckConstraint("status IN ('pending','failed','submitted','skipped')", name="ck_customer_email_status"))

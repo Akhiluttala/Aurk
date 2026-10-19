@@ -27,8 +27,10 @@ def notify_interest(interest_id):
             f"Time:\n{interest.created_at:%Y-%m-%d %H:%M:%S} UTC",
         ])
         name = " ".join(interest.product.name.splitlines())
-        send_email(current_app.config.get("INTEREST_NOTIFICATION_EMAIL"),
-            f"New Product Interest - {name}", f"<pre>{escape(body)}</pre>", body)
+        support = current_app.config["CUSTOMER_SUPPORT_EMAIL"]
+        send_email(current_app.config.get("INTEREST_NOTIFICATION_EMAIL") or support,
+            f"New Product Interest - {name}", f"<pre>{escape(body)}</pre>", body,
+            from_email=support, reply_to=interest.customer_email or support)
         interest.notified_at = datetime.now(timezone.utc)
         db.session.commit()
         return True

@@ -52,6 +52,74 @@ def test_notify_login_return_and_subscription(client, catalog, monkeypatch):
         assert row.customer_email == "buyer@example.com"
 
 
+def test_notify_acknowledgement_queued_once_and_retried(client, catalog, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app.models import CustomerEmail
+    from app.services import customer_emails
+    client.application.config.update(CUSTOMER_EMAILS_ENABLED=True, PUBLIC_BASE_URL="https://aurk.in")
+    owner = Mock()
+    customer = Mock(side_effect=RuntimeError("SMTP down"))
+    monkeypatch.setattr(alerts, "send_email", owner)
+    monkeypatch.setattr(customer_emails, "send_email", customer)
+    login(client)
+    assert interest(client, catalog[0]).status_code == 200
+    assert interest(client, catalog[0]).status_code == 200
+    with client.application.app_context():
+        notice = CustomerEmail.query.one()
+        assert notice.kind == "notify_interest"
+        assert notice.recipient == "buyer@example.com"
+        assert notice.interest_id == ProductInterest.query.one().id
+        assert notice.status == "pending"
+        assert customer_emails.dispatch_customer_emails() == 1
+        assert notice.status == "failed"
+        assert customer_emails.dispatch_customer_emails() == 0
+        notice.next_attempt_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        db.session.commit()
+        customer.side_effect = None
+        assert customer_emails.dispatch_customer_emails() == 1
+        assert notice.status == "submitted"
+        assert customer_emails.dispatch_customer_emails() == 0
+    assert owner.call_count == 1
+    assert owner.call_args.args[0] == "support@aurk.in"
+    assert owner.call_args.kwargs["reply_to"] == "buyer@example.com"
+    assert owner.call_args.kwargs["from_email"] == "support@aurk.in"
+    assert customer.call_args.args[0] == "buyer@example.com"
+    assert "We will update you when the drop is live" in customer.call_args.args[3]
+    assert 'cid:aurk-logo' in customer.call_args.args[2]
+
+
+def test_business_notify_failure_retried_by_existing_worker(client, catalog, monkeypatch):
+    from app.services import customer_emails
+    owner = Mock(side_effect=RuntimeError("SMTP down"))
+    monkeypatch.setattr(alerts, "send_email", owner)
+    monkeypatch.setattr(customer_emails, "send_email", Mock())
+    client.application.config.update(CUSTOMER_EMAILS_ENABLED=True, PUBLIC_BASE_URL="https://aurk.in")
+    login(client)
+    assert interest(client, catalog[0]).status_code == 200
+    with client.application.app_context():
+        assert ProductInterest.query.one().notified_at is None
+    owner.side_effect = None
+    result = client.application.test_cli_runner().invoke(args=["send-customer-emails"])
+    assert result.exit_code == 0, result.output
+    assert owner.call_count == 2
+    with client.application.app_context():
+        assert ProductInterest.query.one().notified_at is not None
+
+
+def test_notify_sample_cli(client, catalog, monkeypatch):
+    from app.services import customer_emails
+    from app.models import CustomerEmail
+    sender = Mock()
+    monkeypatch.setattr(customer_emails, "send_email", sender)
+    client.application.config["PUBLIC_BASE_URL"] = "https://aurk.in"
+    result = client.application.test_cli_runner().invoke(args=["send-email-test", "--to", "controlled@example.com", "--kind", "notify_interest"])
+    assert result.exit_code == 0, result.output
+    assert sender.call_args.args[0] == "controlled@example.com"
+    assert sender.call_args.args[1].startswith("[TEST]")
+    with client.application.app_context():
+        assert CustomerEmail.query.count() == 0
+
+
 @pytest.mark.parametrize("status", ["coming_soon", "out_of_stock"])
 def test_unavailable_visible_and_blocked(client, catalog, status):
     pid, vid, uid = catalog

@@ -69,3 +69,19 @@ def render_customer_welcome_email(customer, *, public_base_url=None, support_ema
         html=current_app.jinja_env.get_template("emails/welcome.html").render(**values),
         text=current_app.jinja_env.get_template("emails/welcome.txt").render(**values),
         from_name="AURK", from_email=sender, reply_to=sender)
+
+
+def render_customer_interest_email(customer, product, *, public_base_url=None,
+                                   support_email="support@aurk.in", sender_email="no-reply@aurk.in"):
+    base = _public_origin(public_base_url)
+    support = validate_email_address(support_email)
+    sender = validate_email_address(sender_email)
+    with current_app.test_request_context():
+        product_url = base + url_for("products.detail", slug=product.slug)
+    values = dict(first_name=customer.first_name, product_name=product.name,
+        subject="You're on the list | AURK", preheader="Thanks for your interest. We will update you when the drop is live.",
+        website_url=base, product_url=product_url, support_email=support)
+    return RenderedCustomerEmail(subject=values["subject"],
+        html=current_app.jinja_env.get_template("emails/notify_interest.html").render(**values),
+        text=current_app.jinja_env.get_template("emails/notify_interest.txt").render(**values),
+        from_name="AURK", from_email=sender, reply_to=sender)

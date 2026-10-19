@@ -6,9 +6,9 @@ import click
 from flask import current_app
 from flask.cli import with_appcontext
 from app.extensions import db
-from app.models import CustomerEmail, User
+from app.models import CustomerEmail, User, ProductInterest
 from app.services.email import send_email
-from app.services.customer_email_templates import render_customer_order_email, render_customer_welcome_email
+from app.services.customer_email_templates import render_customer_order_email, render_customer_welcome_email, render_customer_interest_email
 
 
 def queue_customer_email(kind, customer, order=None):
@@ -25,6 +25,19 @@ def send_rendered_email(recipient, rendered):
     send_email(recipient, rendered.subject, rendered.html, rendered.text,
         from_email=formataddr((rendered.from_name, rendered.from_email)), reply_to=rendered.reply_to,
         inline_images={"aurk-logo": (Path(current_app.static_folder) / "images/brand/email-logo.png").read_bytes()})
+
+
+def queue_interest_acknowledgement(interest, customer):
+    """Queue once per saved interest, atomically with the interest transaction.
+
+    The event key prevents duplicate acknowledgements; no order is associated.
+    """
+    if not current_app.config["CUSTOMER_EMAILS_ENABLED"]:
+        return
+    key = f"notify_interest:{interest.id}"
+    if db.session.scalar(db.select(CustomerEmail.id).where(CustomerEmail.event_key == key)) is None:
+        db.session.add(CustomerEmail(event_key=key, kind="notify_interest", user_id=customer.id, interest_id=interest.id,
+            recipient=customer.email))
 
 
 def dispatch_customer_emails(limit=50):
@@ -53,7 +66,15 @@ def dispatch_customer_emails(limit=50):
         notice.attempts += 1
         try:
             config = current_app.config
-            if notice.kind == "welcome":
+            if notice.kind == "notify_interest":
+                interest = notice.interest
+                if interest is None or interest.customer_id != notice.user_id or interest.product is None:
+                    notice.status = "skipped"
+                    db.session.commit()
+                    continue
+                rendered = render_customer_interest_email(notice.customer, interest.product,
+                    support_email=config["CUSTOMER_SUPPORT_EMAIL"], sender_email=config["CUSTOMER_NOREPLY_EMAIL"])
+            elif notice.kind == "welcome":
                 rendered = render_customer_welcome_email(notice.customer,
                     support_email=config["CUSTOMER_SUPPORT_EMAIL"], sender_email=config["CUSTOMER_NOREPLY_EMAIL"])
             else:
@@ -82,11 +103,17 @@ def send_customer_emails_command(limit):
         return
     count = dispatch_customer_emails(limit)
     click.echo(f"Processed {count} customer email(s). Submitted means provider acceptance.")
+    from app.services.product_interests import notify_interest
+    ids = list(db.session.scalars(db.select(ProductInterest.id).where(
+        ProductInterest.notified_at.is_(None)).order_by(ProductInterest.id).limit(limit)))
+    db.session.rollback()
+    sent = sum(notify_interest(interest_id) for interest_id in ids)
+    click.echo(f"Submitted {sent} product interest alert(s) to the business inbox.")
 
 
 @click.command("send-email-test")
 @click.option("--to", "recipient", required=True, help="Your own controlled test inbox.")
-@click.option("--kind", type=click.Choice(["welcome", "order_received", "order_confirmed"]), default="welcome")
+@click.option("--kind", type=click.Choice(["welcome", "order_received", "order_confirmed", "notify_interest"]), default="welcome")
 @with_appcontext
 def send_email_test_command(recipient, kind):
     """Explicitly send one sample-only email to a selected test inbox."""
@@ -96,7 +123,13 @@ def send_email_test_command(recipient, kind):
     config = current_app.config
     try:
         recipient = validate_email_address(recipient)
-        rendered = (render_customer_welcome_email(SimpleNamespace(first_name="AURK test"),
+        if kind == "notify_interest":
+            rendered = render_customer_interest_email(SimpleNamespace(first_name="AURK test"),
+                SimpleNamespace(name="AURK Upcoming Drop", slug="sample-drop"),
+                support_email=config["CUSTOMER_SUPPORT_EMAIL"], sender_email=config["CUSTOMER_NOREPLY_EMAIL"])
+        else:
+            rendered = None
+        rendered = rendered or (render_customer_welcome_email(SimpleNamespace(first_name="AURK test"),
             support_email=config["CUSTOMER_SUPPORT_EMAIL"], sender_email=config["CUSTOMER_NOREPLY_EMAIL"])
             if kind == "welcome" else render_customer_order_email(sample_order(), kind, support_email=config["CUSTOMER_SUPPORT_EMAIL"]))
         from dataclasses import replace

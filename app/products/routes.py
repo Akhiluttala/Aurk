@@ -239,6 +239,9 @@ def register_interest(product_id):
         db.session.add(interest)
         db.session.flush()
         interest_id = interest.id
+        if product.product_status == "coming_soon" and current_user.is_authenticated:
+            from app.services.customer_emails import queue_interest_acknowledgement
+            queue_interest_acknowledgement(interest, current_user)
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
