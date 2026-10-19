@@ -32,6 +32,26 @@ def interest(client, product_id):
     return client.post(f"/products/{product_id}/interest", headers={"Accept": "application/json"})
 
 
+def test_notify_login_return_and_subscription(client, catalog, monkeypatch):
+    pid, _, uid = catalog
+    monkeypatch.setattr(alerts, "send_email", Mock())
+    response = client.post(f"/products/{pid}/interest")
+    assert response.status_code == 302
+    login_url = response.location
+    assert "/auth/login?next=" in login_url
+    page = client.get(login_url)
+    assert b"Create an account" in page.data
+    assert b"next=/product/launch" in page.data
+    response = client.post(login_url, data={"email": "buyer@example.com", "password": "StrongPassword123!"})
+    assert response.location == "/product/launch"
+    assert interest(client, pid).status_code == 200
+    assert interest(client, pid).status_code == 200
+    with client.application.app_context():
+        row = ProductInterest.query.one()
+        assert row.customer_id == uid
+        assert row.customer_email == "buyer@example.com"
+
+
 @pytest.mark.parametrize("status", ["coming_soon", "out_of_stock"])
 def test_unavailable_visible_and_blocked(client, catalog, status):
     pid, vid, uid = catalog
@@ -43,7 +63,7 @@ def test_unavailable_visible_and_blocked(client, catalog, status):
         assert page.status_code == 200
         assert b"availability-visual" in page.data
         assert status.replace("_", " ").upper().encode() in page.data
-        assert b"I&#39;m Interested" in page.data
+        assert (b"Notify me" if status == "coming_soon" else b"I&#39;m Interested") in page.data
         assert b'action="/cart/add"' not in page.data
     client.post("/cart/add", data={"variant_id": vid})
     with client.session_transaction() as session:
@@ -75,6 +95,14 @@ def test_registration_duplicate_email_and_reload(client, catalog, monkeypatch, a
     if authenticated:
         login(client)
     client.get("/product/launch")
+    if status == "coming_soon" and not authenticated:
+        response = interest(client, pid)
+        assert response.status_code == 401
+        assert "/auth/login?next=" in response.json["login_url"]
+        with client.application.app_context():
+            assert ProductInterest.query.count() == 0
+        assert sender.call_count == 0
+        return
     assert interest(client, pid).status_code == 200
     assert interest(client, pid).status_code == 200
     assert sender.call_count == 1
@@ -87,10 +115,11 @@ def test_registration_duplicate_email_and_reload(client, catalog, monkeypatch, a
         assert row.customer_id == (uid if authenticated else None)
         assert row.customer_email == ("buyer@example.com" if authenticated else None)
         assert row.notified_at
-    assert b"Interest Registered" in client.get("/product/launch").data
+    assert (b"on the list" if status == "coming_soon" else b"Interest Registered") in client.get("/product/launch").data
 
 
 def test_email_failure_saved_and_retryable(client, catalog, monkeypatch):
+    login(client)
     pid, _, _ = catalog
     sender = Mock(side_effect=RuntimeError("SMTP down"))
     monkeypatch.setattr(alerts, "send_email", sender)
@@ -111,7 +140,9 @@ def test_status_transition_and_invalid_product(client, catalog, monkeypatch):
     monkeypatch.setattr(alerts, "send_email", Mock())
     client.get("/shop")
     assert interest(client, 99999).status_code == 404
+    login(client)
     assert interest(client, pid).status_code == 200
+    client.post("/auth/logout")
     with client.application.app_context():
         db.session.get(Product, pid).product_status = "available"
         db.session.commit()
@@ -125,6 +156,7 @@ def test_status_transition_and_invalid_product(client, catalog, monkeypatch):
 
 
 def test_database_failure_allows_retry(client, catalog, monkeypatch):
+    login(client)
     client.get("/shop")
     original = db.session.commit
     monkeypatch.setattr(db.session, "commit", Mock(side_effect=SQLAlchemyError("database failed")))
@@ -141,6 +173,7 @@ def test_csrf_and_product_deletion(client, catalog, monkeypatch):
     client.application.config["WTF_CSRF_ENABLED"] = True
     assert interest(client, pid).status_code == 400
     client.application.config["WTF_CSRF_ENABLED"] = False
+    login(client)
     monkeypatch.setattr(alerts, "send_email", Mock())
     client.get("/shop")
     interest(client, pid)

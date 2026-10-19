@@ -1,0 +1,43 @@
+.storefront-theme .product-interest .notify-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  overflow: hidden;
+  isolation: isolate;
+  box-sizing: border-box;
+  background: #f5f3ee;
+  color: #111;
+  border: 1px solid #f5f3ee;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: transform .25s ease, box-shadow .25s ease;
+}
+.notify-button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 25%, #b9b4a650 50%, transparent 75%);
+  transform: translateX(-150%);
+  animation: notify-shimmer 5s ease-in-out infinite;
+}
+.storefront-theme .product-interest .notify-button:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px #ffffff20;
+}
+.notify-button:focus-visible { outline: 2px solid #d7bd91; outline-offset: 4px; }
+.notify-button:disabled::after { animation: none; display: none; }
+@keyframes notify-shimmer {
+  0%, 65% { transform: translateX(-150%); }
+  100% { transform: translateX(150%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .notify-button::after { animation: none; display: none; }
+  .storefront-theme .product-interest .notify-button { transition: none; }
+  .storefront-theme .product-interest .notify-button:not(:disabled):hover { transform: none; }
+}

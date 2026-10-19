@@ -213,6 +213,11 @@ def register_interest(product_id):
         return response("This product could not be found.", 404)
     if product.product_status not in {"coming_soon", "out_of_stock"}:
         return response("This product is available. You can add it to your bag.", 409)
+    if product.product_status == "coming_soon" and not current_user.is_authenticated:
+        login_url = url_for("auth.login", next=url_for("products.detail", slug=product.slug))
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify(success=False, message="Sign in or create an account to join the list.", login_url=login_url), 401
+        return redirect(login_url)
     if current_user.is_authenticated:
         key = f"user:{current_user.id}"
         customer_id = current_user.id

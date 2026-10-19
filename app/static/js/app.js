@@ -177,11 +177,15 @@ document.querySelectorAll('[data-interest-form]').forEach((form) => {
     try {
       const response = await fetch(form.action, {method: 'POST', body: new FormData(form), headers: {'Accept': 'application/json'}});
       const result = await response.json();
+      if (response.status === 401 && result.login_url) {
+        window.location.assign(result.login_url);
+        return;
+      }
       if (!response.ok || !result.success) throw new Error(result.message || 'Something went wrong. Please try again.');
       document.querySelectorAll('[data-interest-form]').forEach((other) => {
         if (other.action === form.action) {
           other.querySelector('button').disabled = true;
-          other.querySelector('button').textContent = 'Interest Registered \u2713';
+          other.querySelector('button').textContent = other.hasAttribute('data-notify-launch') ? "You're on the list ✓" : 'Interest Registered \u2713';
           other.querySelector('[role="status"]').textContent = result.message;
         }
       });
